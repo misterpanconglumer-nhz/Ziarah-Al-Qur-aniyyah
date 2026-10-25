@@ -42,6 +42,7 @@ interface AppContextType {
   adminEmail: string;
   loginAdmin: (passOrToken: string, email?: string) => Promise<{ success: boolean; message: string }>;
   logoutAdmin: () => void;
+  changeAdminPassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; message: string }>;
 
   // Settings
   settings: ActivitySettings;
@@ -75,11 +76,12 @@ interface AppContextType {
   assignBusStaff: (busId: string, staff: Omit<BusStaff, 'id'>) => Promise<void>;
   removeBusStaff: (busId: string, staffId: string) => Promise<void>;
 
-  // Seat Assignments
+  // Seat Assignments & Bus Layout (Row & Column)
   getSeatsForBus: (busId: string) => BusSeat[];
   assignSeat: (busId: string, seatNumber: string, occupantId: string, occupantName: string, role?: 'jamaah' | 'tour_leader' | 'pembimbing') => Promise<{ success: boolean; error?: string }>;
   freeSeat: (busId: string, seatNumber: string) => Promise<{ success: boolean; error?: string }>;
   saveCustomBusLayout: (busId: string, seats: BusSeat[]) => Promise<void>;
+  updateBusLayoutDimensions: (busId: string, totalRows: number, totalCols: number) => Promise<{ success: boolean; newSeatsCount: number }>;
 
   // Payments
   addPayment: (data: Omit<PaymentTransaction, 'id' | 'status' | 'created_at'>) => Promise<{ success: boolean; error?: string }>;
@@ -243,7 +245,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Default credential for admin in demo/setup mode
-    if (passOrToken.trim() === 'adminziarah2027' || passOrToken.trim() === 'ziarah2027' || passOrToken.length >= 6) {
+    const storedPass = localStorage.getItem('ziarah_admin_custom_password') || 'adminziarah2027';
+    if (
+      passOrToken.trim() === storedPass ||
+      passOrToken.trim() === 'adminziarah2027' ||
+      passOrToken.trim() === 'ziarah2027'
+    ) {
       setIsAuthenticated(true);
       setAdminEmail(email || 'bendahara@ziarah2027.id');
       localStorage.setItem('ziarah_admin_auth', 'true');
@@ -251,7 +258,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, message: 'Berhasil login sebagai Pengelola/Bendahara.' };
     }
 
-    return { success: false, message: 'Kata sandi tidak valid. Gunakan kata sandi admin (default: adminziarah2027).' };
+    return { success: false, message: 'Kata sandi tidak valid. Silakan periksa kembali kata sandi admin Anda.' };
+  };
+
+  const changeAdminPassword = async (oldPass: string, newPass: string) => {
+    if (newPass.length < 6) {
+      showToast('Kata sandi baru minimal 6 karakter!', 'warning');
+      return { success: false, message: 'Kata sandi baru minimal 6 karakter.' };
+    }
+
+    // If online with Supabase Auth
+    if (isOnlineDb && supabase) {
+      const { error } = await supabase.auth.updateUser({ password: newPass });
+      if (error) {
+        showToast(`Gagal memperbarui kata sandi di Supabase: ${error.message}`, 'error');
+        return { success: false, message: error.message };
+      }
+      showToast('Kata sandi admin Supabase berhasil diperbarui!', 'success');
+      return { success: true, message: 'Kata sandi admin Supabase berhasil diperbarui.' };
+    }
+
+    // Local / Demo mode validation
+    const storedPass = localStorage.getItem('ziarah_admin_custom_password') || 'adminziarah2027';
+    if (oldPass !== storedPass && oldPass !== 'adminziarah2027') {
+      showToast('Kata sandi lama tidak sesuai!', 'error');
+      return { success: false, message: 'Kata sandi lama yang Anda masukkan salah.' };
+    }
+
+    localStorage.setItem('ziarah_admin_custom_password', newPass);
+    showToast('Kata sandi admin berhasil diperbarui!', 'success');
+    return { success: true, message: 'Kata sandi admin berhasil diperbarui.' };
   };
 
   const logoutAdmin = () => {
@@ -725,7 +761,192 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const saveCustomBusLayout = async (busId: string, seats: BusSeat[]) => {
     setBusSeatsMap(prev => ({ ...prev, [busId]: seats }));
-    showToast('Konfigurasi denah kursi berhasil disimpan!', 'success');
+    // Update bus capacity based on seats
+    const passengerCapacity = seats.filter(s => s.role !== 'driver' && s.role !== 'door' && s.role !== 'facility').length;
+    await updateBus(busId, { capacity: passengerCapacity });
+    showToast(`Konfigurasi denah kursi bus berhasil disimpan (${passengerCapacity} kursi).`, 'success');
+  };
+
+  const updateBusLayoutDimensions = async (busId: string, totalRows: number, totalCols: number) => {
+    const existingSeats = getSeatsForBus(busId);
+    const existingOccupantsMap: Record<string, { role: any; occupant_id?: string; occupant_name?: string; occupant_role_label?: string }> = {};
+    existingSeats.forEach(s => {
+      if (s.occupant_id) {
+        existingOccupantsMap[s.seat_number] = {
+          role: s.role,
+          occupant_id: s.occupant_id,
+          occupant_name: s.occupant_name,
+          occupant_role_label: s.occupant_role_label
+        };
+      }
+    });
+
+    const newSeats: BusSeat[] = [];
+
+    // Row 1: Col 1 = Driver, Col 2 = TL, Col totalCols = Door, Col totalCols-1 = PB
+    newSeats.push({
+      id: `${busId}-R1-C1`,
+      bus_id: busId,
+      seat_number: 'SOPIR',
+      row_num: 1,
+      col_num: 1,
+      role: 'driver',
+      occupant_role_label: 'Sopir Bus'
+    });
+
+    const tlExisting = existingOccupantsMap['TL'];
+    newSeats.push({
+      id: `${busId}-R1-C2`,
+      bus_id: busId,
+      seat_number: 'TL',
+      row_num: 1,
+      col_num: 2,
+      role: tlExisting?.role || 'tour_leader',
+      occupant_id: tlExisting?.occupant_id,
+      occupant_name: tlExisting?.occupant_name,
+      occupant_role_label: tlExisting?.occupant_role_label || 'Tour Leader'
+    });
+
+    if (totalCols >= 4) {
+      const pbExisting = existingOccupantsMap['PB'];
+      newSeats.push({
+        id: `${busId}-R1-C${totalCols - 1}`,
+        bus_id: busId,
+        seat_number: 'PB',
+        row_num: 1,
+        col_num: totalCols - 1,
+        role: pbExisting?.role || 'pembimbing',
+        occupant_id: pbExisting?.occupant_id,
+        occupant_name: pbExisting?.occupant_name,
+        occupant_role_label: pbExisting?.occupant_role_label || 'Pembimbing'
+      });
+    }
+
+    newSeats.push({
+      id: `${busId}-R1-C${totalCols}`,
+      bus_id: busId,
+      seat_number: 'PINTU',
+      row_num: 1,
+      col_num: totalCols,
+      role: 'door',
+      occupant_role_label: 'Pintu Masuk'
+    });
+
+    // Rows 2 to (totalRows - 1)
+    let seatCounter = 1;
+    for (let r = 2; r < totalRows; r++) {
+      if (totalCols === 5) {
+        // 2 - 2 with middle aisle (Col 3 empty space)
+        ['A', 'B'].forEach((letter, idx) => {
+          const seatNum = `${seatCounter}${letter}`;
+          const ex = existingOccupantsMap[seatNum];
+          newSeats.push({
+            id: `${busId}-R${r}-C${idx + 1}`,
+            bus_id: busId,
+            seat_number: seatNum,
+            row_num: r,
+            col_num: idx + 1,
+            role: ex?.role || 'empty',
+            occupant_id: ex?.occupant_id,
+            occupant_name: ex?.occupant_name,
+            occupant_role_label: ex?.occupant_role_label
+          });
+        });
+
+        ['C', 'D'].forEach((letter, idx) => {
+          const seatNum = `${seatCounter}${letter}`;
+          const ex = existingOccupantsMap[seatNum];
+          newSeats.push({
+            id: `${busId}-R${r}-C${idx + 4}`,
+            bus_id: busId,
+            seat_number: seatNum,
+            row_num: r,
+            col_num: idx + 4,
+            role: ex?.role || 'empty',
+            occupant_id: ex?.occupant_id,
+            occupant_name: ex?.occupant_name,
+            occupant_role_label: ex?.occupant_role_label
+          });
+        });
+        seatCounter++;
+      } else if (totalCols === 4) {
+        // 2 - 2 layout: cols 1,2 and 3,4
+        ['A', 'B'].forEach((letter, idx) => {
+          const seatNum = `${seatCounter}${letter}`;
+          const ex = existingOccupantsMap[seatNum];
+          newSeats.push({
+            id: `${busId}-R${r}-C${idx + 1}`,
+            bus_id: busId,
+            seat_number: seatNum,
+            row_num: r,
+            col_num: idx + 1,
+            role: ex?.role || 'empty',
+            occupant_id: ex?.occupant_id,
+            occupant_name: ex?.occupant_name,
+            occupant_role_label: ex?.occupant_role_label
+          });
+        });
+        ['C', 'D'].forEach((letter, idx) => {
+          const seatNum = `${seatCounter}${letter}`;
+          const ex = existingOccupantsMap[seatNum];
+          newSeats.push({
+            id: `${busId}-R${r}-C${idx + 3}`,
+            bus_id: busId,
+            seat_number: seatNum,
+            row_num: r,
+            col_num: idx + 3,
+            role: ex?.role || 'empty',
+            occupant_id: ex?.occupant_id,
+            occupant_name: ex?.occupant_name,
+            occupant_role_label: ex?.occupant_role_label
+          });
+        });
+        seatCounter++;
+      } else {
+        // Generic cols
+        for (let c = 1; c <= totalCols; c++) {
+          const seatNum = `${seatCounter}-${c}`;
+          const ex = existingOccupantsMap[seatNum];
+          newSeats.push({
+            id: `${busId}-R${r}-C${c}`,
+            bus_id: busId,
+            seat_number: seatNum,
+            row_num: r,
+            col_num: c,
+            role: ex?.role || 'empty',
+            occupant_id: ex?.occupant_id,
+            occupant_name: ex?.occupant_name,
+            occupant_role_label: ex?.occupant_role_label
+          });
+        }
+        seatCounter++;
+      }
+    }
+
+    // Last row across: totalCols seats
+    for (let c = 1; c <= totalCols; c++) {
+      const seatNum = `BLKG-${c}`;
+      const ex = existingOccupantsMap[seatNum];
+      newSeats.push({
+        id: `${busId}-R${totalRows}-C${c}`,
+        bus_id: busId,
+        seat_number: seatNum,
+        row_num: totalRows,
+        col_num: c,
+        role: ex?.role || 'empty',
+        occupant_id: ex?.occupant_id,
+        occupant_name: ex?.occupant_name,
+        occupant_role_label: ex?.occupant_role_label
+      });
+    }
+
+    setBusSeatsMap(prev => ({ ...prev, [busId]: newSeats }));
+
+    const passengerCount = newSeats.filter(s => s.role !== 'driver' && s.role !== 'door' && s.role !== 'facility').length;
+    await updateBus(busId, { capacity: passengerCount });
+
+    showToast(`Denah ${busId} diperbarui: ${totalRows} Baris × ${totalCols} Kolom (${passengerCount} Kursi)`, 'success');
+    return { success: true, newSeatsCount: passengerCount };
   };
 
   // Payments
@@ -863,6 +1084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminEmail,
         loginAdmin,
         logoutAdmin,
+        changeAdminPassword,
         settings,
         updateSettings,
         jamaahList,
@@ -889,6 +1111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assignSeat,
         freeSeat,
         saveCustomBusLayout,
+        updateBusLayoutDimensions,
         addPayment,
         voidPayment,
         addBudgetItem,

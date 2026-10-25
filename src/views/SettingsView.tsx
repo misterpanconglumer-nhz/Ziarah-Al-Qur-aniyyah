@@ -13,7 +13,9 @@ import {
   AlertTriangle,
   ExternalLink,
   Sliders,
-  DollarSign
+  DollarSign,
+  KeyRound,
+  Lock
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -30,6 +32,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
     refreshDbStatus,
     jamaahList,
     updateJamaah,
+    changeAdminPassword,
+    adminEmail,
     showToast 
   } = useApp();
 
@@ -38,6 +42,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
   const [activityYear, setActivityYear] = useState(settings.activity_year);
   const [defaultBill, setDefaultBill] = useState(settings.default_bill_amount);
   const [targetParticipants, setTargetParticipants] = useState(settings.target_participants);
+
+  // Password change states
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPass, setIsChangingPass] = useState(false);
 
   // Bulk update nominal modal
   const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
@@ -51,6 +61,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
       default_bill_amount: Number(defaultBill),
       target_participants: Number(targetParticipants)
     });
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !confirmPassword) {
+      showToast('Harap isi semua kolom kata sandi!', 'warning');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showToast('Konfirmasi kata sandi baru tidak cocok!', 'error');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showToast('Kata sandi baru minimal 6 karakter!', 'warning');
+      return;
+    }
+
+    setIsChangingPass(true);
+    const res = await changeAdminPassword(oldPassword, newPassword);
+    if (res.success) {
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+    setIsChangingPass(false);
   };
 
   const handleApplyToAllUnpaid = async () => {
@@ -189,7 +226,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
         </form>
       </div>
 
-      {/* Section 2: Database Supabase Status */}
+      {/* Section 2: Ganti Password Admin */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-5">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+          <div className="p-2 bg-midnight-50 text-midnight rounded-xl">
+            <KeyRound className="w-5 h-5 text-teal-deep" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-midnight">Keamanan Akun & Ganti Password Admin</h3>
+            <p className="text-[11px] text-slate-500">Perbarui kata sandi login pengelola/bendahara kegiatan ({adminEmail})</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleChangePassword} className="space-y-4 max-w-xl">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Kata Sandi Lama *
+            </label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                value={oldPassword}
+                onChange={e => setOldPassword(e.target.value)}
+                placeholder="Masukkan kata sandi lama Anda..."
+                required
+                className="w-full pl-10 pr-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+              />
+            </div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Kata sandi default awal: <code>adminziarah2027</code></span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Kata Sandi Baru *
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Minimal 6 karakter..."
+                  required
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Konfirmasi Kata Sandi Baru *
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi kata sandi baru..."
+                  required
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={isChangingPass}
+              className="px-5 py-2.5 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>{isChangingPass ? 'Memperbarui...' : 'Simpan Kata Sandi Baru'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Section 3: Database Supabase Status */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
