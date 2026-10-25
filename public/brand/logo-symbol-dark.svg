@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="primaryGradDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4BC7BE" />
+      <stop offset="100%" stop-color="#236D78" />
+    </linearGradient>
+    <linearGradient id="accentGradDark" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#236D78" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+    <linearGradient id="lightGradDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#7CE5DE" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer coordination ring -->
+  <circle cx="60" cy="60" r="54" stroke="#4BC7BE" stroke-width="2.5" stroke-dasharray="4 2" opacity="0.6" />
+  
+  <!-- Main Foundation Arch / Journey Route -->
+  <path d="M 24 88 C 24 50, 40 28, 60 22 C 80 28, 96 50, 96 88 C 84 84, 74 76, 60 76 C 46 76, 36 84, 24 88 Z" fill="url(#primaryGradDark)" />
+  
+  <!-- Inner Sacred Arch / Unity Node -->
+  <path d="M 36 88 C 36 62, 47 44, 60 38 C 73 44, 84 62, 84 88 C 76 83, 68 80, 60 80 C 52 80, 44 83, 36 88 Z" fill="url(#accentGradDark)" />
+
+  <!-- Center Guidance Star / Diamond -->
+  <path d="M 60 28 L 65 38 L 75 43 L 65 48 L 60 58 L 55 48 L 45 43 L 55 38 Z" fill="url(#lightGradDark)" />
+  
+  <!-- Cohesion Nexus Points -->
+  <circle cx="60" cy="70" r="4.5" fill="#FFFFFF" />
+  <circle cx="44" cy="75" r="3.5" fill="#4BC7BE" />
+  <circle cx="76" cy="75" r="3.5" fill="#4BC7BE" />
+  <circle cx="60" cy="85" r="2.5" fill="#236D78" />
+</svg>
