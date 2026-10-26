@@ -1,6 +1,7 @@
 -- ==============================================================================
--- SKEMA DATABASE LENGKAP: ZIARAH AKBAR AL-QUR'ANIYYAH 2027
+-- SKEMA DATABASE LENGKAP & SEED DATA: ZIARAH AKBAR AL-QUR'ANIYYAH 2027
 -- PostgreSQL + Supabase dengan Row Level Security (RLS) & Indexes Skala 3.000 Peserta
+-- Jalankan seluruh script ini di SQL Editor Dashboard Supabase Anda
 -- ==============================================================================
 
 -- 1. EXTENSIONS
@@ -20,7 +21,9 @@ CREATE TABLE IF NOT EXISTS activity_settings (
 -- Inisialisasi baris pengaturan default jika belum ada
 INSERT INTO activity_settings (id, activity_name, activity_year, default_bill_amount, target_participants)
 VALUES ('current_settings', 'Ziarah Akbar Al-Qur''aniyyah 2027', '2027', 175000, 3000)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  activity_name = EXCLUDED.activity_name,
+  updated_at = now();
 
 -- 3. BUSES (Data Bus & Operator)
 CREATE TABLE IF NOT EXISTS buses (
@@ -34,6 +37,14 @@ CREATE TABLE IF NOT EXISTS buses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Inisialisasi Bus Awal
+INSERT INTO buses (id, name, operator, bus_type, capacity, status, notes)
+VALUES 
+  ('BUS-01', 'Bus 01', 'Blue Star', 'Executive Jetbus 5', 59, 'active', 'Kapasitas 59 kursi eksekutif'),
+  ('BUS-02', 'Bus 02', 'Blue Star', 'Executive Jetbus 5', 59, 'active', 'Kapasitas 59 kursi eksekutif'),
+  ('BUS-03', 'Bus 03', 'Pariwisata Mulia', 'Super Executive', 60, 'standby', 'Kapasitas 60 kursi cadangan')
+ON CONFLICT (id) DO NOTHING;
+
 -- 4. ROMBONGAN (Data Kelompok / Majelis / Keluarga)
 CREATE TABLE IF NOT EXISTS rombongan (
   id TEXT PRIMARY KEY,
@@ -44,6 +55,15 @@ CREATE TABLE IF NOT EXISTS rombongan (
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Inisialisasi Rombongan Awal
+INSERT INTO rombongan (id, name, coordinator_name, coordinator_phone, bus_id, notes)
+VALUES
+  ('RMB-01', 'Majelis Ta''lim Al-Ikhlas', 'H. Sudirman', '081311223344', 'BUS-01', 'Wilayah Jakarta Timur'),
+  ('RMB-02', 'Keluarga Besar H. Ridwan', 'H. Ridwan Kamil', '081255667788', 'BUS-01', 'Keluarga inti & kerabat'),
+  ('RMB-03', 'Al-Qur''aniyyah Pusat', 'Ust. Ahmad Dahlan', '081599887766', 'BUS-02', 'Alumni dan santri sepuh'),
+  ('RMB-04', 'Remaja Masjid Nurul Huda', 'Fikri Haikal', '087788990011', 'BUS-02', 'Pengurus remaja masjid')
+ON CONFLICT (id) DO NOTHING;
 
 -- 5. BUS STAFF ASSIGNMENTS (Tour Leader & Pembimbing per Bus)
 CREATE TABLE IF NOT EXISTS bus_staff_assignments (
@@ -57,11 +77,20 @@ CREATE TABLE IF NOT EXISTS bus_staff_assignments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Inisialisasi Petugas Bus Awal
+INSERT INTO bus_staff_assignments (bus_id, name, phone, role, seat_number)
+VALUES
+  ('BUS-01', 'Ust. M. Farhan Assegaf', '081234567801', 'tour_leader', 'TL'),
+  ('BUS-01', 'KH. Mahmud Syakir, Lc.', '081234567802', 'pembimbing', 'PB'),
+  ('BUS-02', 'Ust. Bambang Hidayat', '081234567803', 'tour_leader', 'TL'),
+  ('BUS-02', 'Ustadzah Hj. Maryam Hasanah', '081234567804', 'pembimbing', 'PB')
+ON CONFLICT DO NOTHING;
+
 -- 6. BUS LAYOUT & SEATS CONFIGURATION
 CREATE TABLE IF NOT EXISTS bus_layouts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   bus_id TEXT NOT NULL UNIQUE REFERENCES buses(id) ON DELETE CASCADE,
-  total_rows INTEGER NOT NULL DEFAULT 12,
+  total_rows INTEGER NOT NULL DEFAULT 13,
   total_cols INTEGER NOT NULL DEFAULT 5,
   driver_row INTEGER NOT NULL DEFAULT 1,
   driver_col INTEGER NOT NULL DEFAULT 1,
@@ -131,6 +160,16 @@ CREATE TABLE IF NOT EXISTS budget_items (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Inisialisasi Pos Anggaran Awal
+INSERT INTO budget_items (id, name, category, volume, unit, unit_price, total_budget, notes)
+VALUES
+  ('BDG-01', 'Sewa Bus Pariwisata Blue Star (Executive Jetbus 5)', 'Transportasi', 10, 'Unit Bus', 12500000, 125000000, 'Termasuk BBM, tol Jabodetabek, tip sopir'),
+  ('BDG-02', 'Konsumsi Snack Pagi & Air Mineral', 'Konsumsi', 600, 'Paket', 25000, 15000000, 'Snack box 3 macam kue + air botol'),
+  ('BDG-03', 'Konsumsi Makan Siang Prasmanan / Box', 'Konsumsi', 600, 'Porsi', 45000, 27000000, 'Di rest area / lokasi ziarah'),
+  ('BDG-04', 'Infaq Makam & Kebersihan Lokasi Ziarah', 'Retribusi & Ziarah', 5, 'Makam Waliyullah', 2000000, 10000000, 'Infaq resmi maqbarah'),
+  ('BDG-05', 'ID Card & Buku Doa Ziarah Saku', 'Perlengkapan', 600, 'Eksemplar', 15000, 9000000, 'Cetak tali lanyard + buku saku doa')
+ON CONFLICT (id) DO NOTHING;
+
 -- 10. EXPENSES (Realisasi Pengeluaran Kas Aktual)
 CREATE TABLE IF NOT EXISTS expenses (
   id TEXT PRIMARY KEY,
@@ -176,6 +215,7 @@ CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses (status);
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) KEAMANAN DATA
+-- Mengizinkan peran anon dan authenticated aplikasi mengakses data
 -- ==============================================================================
 ALTER TABLE activity_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buses ENABLE ROW LEVEL SECURITY;
@@ -189,7 +229,6 @@ ALTER TABLE budget_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Policy: Admin terautentikasi (authenticated role) memiliki akses penuh
 DO $$
 DECLARE
   tbl text;
@@ -202,8 +241,9 @@ BEGIN
       'expenses', 'audit_logs'
     )
   LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "App Access Policy" ON %I;', tbl);
     EXECUTE format('DROP POLICY IF EXISTS "Admin Full Access Policy" ON %I;', tbl);
-    EXECUTE format('CREATE POLICY "Admin Full Access Policy" ON %I FOR ALL TO authenticated USING (true) WITH CHECK (true);', tbl);
+    EXECUTE format('CREATE POLICY "App Access Policy" ON %I FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);', tbl);
   END LOOP;
 END
 $$;
