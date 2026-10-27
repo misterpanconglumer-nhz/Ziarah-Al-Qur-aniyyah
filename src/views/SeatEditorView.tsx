@@ -1,22 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Bus, BusSeat, Jamaah, SeatRole } from '../types';
-import { exportBusSeatChartPDF } from '../utils/pdf';
+import { exportBusSeatChartPDF, exportBusVisualChartPDF } from '../utils/pdf';
 import { 
   Grid, 
   Printer, 
-  UserPlus, 
+  FileDown,
+  FileText,
   UserMinus, 
-  RefreshCw, 
-  ShieldCheck, 
-  User, 
   X, 
   Search, 
-  Check, 
-  AlertCircle,
-  HelpCircle,
-  Sliders,
-  ChevronDown
+  Sliders, 
+  ChevronDown,
+  CheckCircle,
+  LayoutGrid
 } from 'lucide-react';
 
 interface SeatEditorViewProps {
@@ -27,11 +24,13 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const { 
     busesList, 
     jamaahList, 
+    rombonganList,
     getSeatsForBus, 
     assignSeat, 
     freeSeat, 
     saveCustomBusLayout,
     updateBusLayoutDimensions,
+    standardizeBusTo59Seats,
     showToast 
   } = useApp();
 
@@ -48,6 +47,9 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     return getSeatsForBus(selectedBus.id);
   }, [selectedBus, getSeatsForBus]);
 
+  // View mode: official visual 59-seat view (matching image) or matrix editor
+  const [viewMode, setViewMode] = useState<'official_59' | 'matrix'>('official_59');
+
   // Modal / Selection State
   const [selectedSeat, setSelectedSeat] = useState<BusSeat | null>(null);
   const [occupantSearch, setOccupantSearch] = useState('');
@@ -62,7 +64,59 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const [cellEditNumber, setCellEditNumber] = useState('');
   const [cellEditRole, setCellEditRole] = useState<SeatRole>('empty');
 
-  // Group seats by row
+  // Staff & Coordinator info for this bus
+  const tlStaff = useMemo(() => {
+    return (selectedBus?.staff || []).find(s => s.role === 'tour_leader');
+  }, [selectedBus]);
+
+  const rombonganBus = useMemo(() => {
+    return rombonganList.find(r => r.bus_id === selectedBus?.id);
+  }, [rombonganList, selectedBus]);
+
+  const koordinatorName = rombonganBus?.coordinator_name || (selectedBus?.staff || []).find(s => s.role === 'pembimbing')?.name || '';
+  const koordinatorPhone = rombonganBus?.coordinator_phone || (selectedBus?.staff || []).find(s => s.role === 'pembimbing')?.phone || '';
+  const tlName = tlStaff?.name || '';
+  const tlPhone = tlStaff?.phone || '';
+
+  // Map seats 1..59 for the official template
+  const seatMap59 = useMemo(() => {
+    const map = new Map<number, BusSeat>();
+    seats.forEach(s => {
+      const match = s.seat_number.match(/\d+/);
+      if (match) {
+        const num = parseInt(match[0], 10);
+        if (num >= 1 && num <= 59 && !map.has(num)) {
+          map.set(num, s);
+        }
+      }
+    });
+
+    // Fallback for non-numbered seats
+    const unmapped = seats.filter(
+      s => s.occupant_name && (!s.seat_number.match(/\d+/) || parseInt(s.seat_number.match(/\d+/)![0], 10) > 59)
+    );
+    let cur = 1;
+    unmapped.forEach(s => {
+      while (map.has(cur) && cur <= 59) cur++;
+      if (cur <= 59) map.set(cur, s);
+    });
+
+    return map;
+  }, [seats]);
+
+  const getSeatByNumber = (num: number): BusSeat => {
+    if (seatMap59.has(num)) return seatMap59.get(num)!;
+    return {
+      id: `${selectedBus?.id || 'BUS'}-SEAT-${num}`,
+      bus_id: selectedBus?.id || 'BUS',
+      seat_number: `SEAT ${num}`,
+      row_num: num <= 50 ? Math.ceil(num / 5) : num <= 53 ? 11 : 12,
+      col_num: 1,
+      role: 'empty'
+    };
+  };
+
+  // Group seats by row for matrix view
   const rowsGrouped = useMemo(() => {
     const grouped: Record<number, BusSeat[]> = {};
     seats.forEach(seat => {
@@ -72,7 +126,6 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
       grouped[seat.row_num].push(seat);
     });
 
-    // Sort cols in each row
     Object.keys(grouped).forEach(r => {
       grouped[Number(r)].sort((a, b) => a.col_num - b.col_num);
     });
@@ -90,18 +143,16 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const candidateJamaah = useMemo(() => {
     const q = occupantSearch.toLowerCase();
     return jamaahList.filter(j => {
-      const matchSearch = j.name.toLowerCase().includes(q) || (j.phone && j.phone.includes(q));
-      return matchSearch;
+      return j.name.toLowerCase().includes(q) || (j.phone && j.phone.includes(q));
     });
   }, [jamaahList, occupantSearch]);
 
   // Stats
   const filledCount = seats.filter(s => s.role !== 'empty' && s.role !== 'driver' && s.role !== 'door' && s.occupant_name).length;
-  const emptyCount = seats.filter(s => s.role === 'empty').length;
+  const emptyCount = Math.max(0, (selectedBus?.capacity || 59) - filledCount);
 
   const handleSeatClick = (seat: BusSeat) => {
     if (seat.role === 'driver' || seat.role === 'door') {
-      // Allow modifying cell in cell edit modal
       setEditingCellSeat(seat);
       setCellEditNumber(seat.seat_number);
       setCellEditRole(seat.role);
@@ -124,13 +175,6 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     if (!selectedBus) return;
     await updateBusLayoutDimensions(selectedBus.id, Number(configRows), Number(configCols));
     setIsDimensionModalOpen(false);
-  };
-
-  const handleOpenCellEditor = (seat: BusSeat, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingCellSeat(seat);
-    setCellEditNumber(seat.seat_number);
-    setCellEditRole(seat.role);
   };
 
   const handleSaveCellChanges = async (e: React.FormEvent) => {
@@ -173,27 +217,110 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     setSelectedSeat(null);
   };
 
-  const handlePrintPDF = () => {
+  // Print & Export Handlers
+  const handlePrintA4 = () => {
+    window.print();
+  };
+
+  const handleExportVisualPDF = () => {
+    if (!selectedBus) return;
+    exportBusVisualChartPDF(selectedBus, seats, selectedBus.staff || [], rombonganList);
+    showToast(`Dokumen PDF Denah Resmi 59 Kursi ${selectedBus.name} berhasil diunduh!`, 'success');
+  };
+
+  const handleExportTabularPDF = () => {
     if (!selectedBus) return;
     exportBusSeatChartPDF(selectedBus, seats, selectedBus.staff || []);
-    showToast(`Dokumen PDF Denah Kursi ${selectedBus.name} berhasil dibuat!`, 'success');
+    showToast(`Dokumen PDF Rekap Tabel ${selectedBus.name} berhasil dibuat!`, 'success');
+  };
+
+  const handleStandardize59 = async () => {
+    if (!selectedBus) return;
+    await standardizeBusTo59Seats(selectedBus.id);
+  };
+
+  // Helper to render one seat in official 59 view
+  const renderOfficialSeatBox = (num: number, className: string = '') => {
+    const seat = getSeatByNumber(num);
+    const occupant = seat.occupant_name || '';
+
+    return (
+      <div
+        key={num}
+        onClick={() => handleSeatClick(seat)}
+        className={`border border-slate-700 bg-white rounded-xs overflow-hidden cursor-pointer hover:border-teal-600 transition shadow-xs group select-none flex flex-col justify-between ${className}`}
+        title={`Seat ${num}: ${occupant || 'Kosong'} (Klik untuk kelola)`}
+      >
+        {/* Top Gray Header: SEAT X */}
+        <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 px-1 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider">
+          SEAT {num}
+        </div>
+
+        {/* Occupant Full Name */}
+        <div className="p-1 min-h-[38px] sm:min-h-[44px] flex items-center justify-center text-center bg-white">
+          {occupant ? (
+            <span className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] leading-tight uppercase line-clamp-2 px-0.5">
+              {occupant}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-300 font-semibold group-hover:text-teal-600 transition">
+              -
+            </span>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Print CSS Stylesheet */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 4mm 6mm;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          .print-a4-canvas, .print-a4-canvas * {
+            visibility: visible !important;
+          }
+          .print-a4-canvas {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-shadow: none !important;
+            border: 2px solid #A3C493 !important;
+            padding: 5mm 6mm !important;
+            margin: 0 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Header and Controls (Hidden on print) */}
+      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
             <Grid className="w-6 h-6 text-teal-deep" />
-            <span>Editor Denah Kursi Bus Interaktif</span>
+            <span>Editor Denah Kursi Bus</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tampilan tampak atas (bird's eye view). Klik kursi untuk menempatkan jamaah atau petugas.
+            Format denah resmi standar 59 kursi (2-3) menampilkan nama lengkap jamaah. Siap dicetak ke A4 atau diekspor ke PDF.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Bus Selector */}
           <div className="relative">
             <select
@@ -210,128 +337,309 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
-          {/* Atur Baris & Kolom Button */}
+          {/* Standardize 59 Seats Button */}
           <button
-            onClick={handleOpenDimensionsModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-deep border border-teal-200 text-xs font-bold rounded-xl transition shadow-sm"
-            title="Ubah Jumlah Baris (Row) dan Kolom (Column)"
+            onClick={handleStandardize59}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl transition shadow-sm"
+            title="Standarisasi urutan kursi ke format 59 kursi (2-3)"
           >
-            <Sliders className="w-4 h-4" />
-            <span>Atur Baris & Kolom</span>
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <span>Format 59 Kursi</span>
+          </button>
+
+          {/* Print A4 Button */}
+          <button
+            onClick={handlePrintA4}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-deep hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+            title="Cetak langsung ke ukuran kertas A4"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Cetak A4 (Print)</span>
           </button>
 
           {/* Export PDF Button */}
           <button
-            onClick={handlePrintPDF}
+            onClick={handleExportVisualPDF}
             className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+            title="Download PDF Denah Visual A4 persis seperti gambar"
           >
-            <Printer className="w-4 h-4" />
-            <span>Cetak PDF Denah</span>
+            <FileDown className="w-4 h-4 text-teal-soft" />
+            <span>Export PDF Denah</span>
+          </button>
+
+          {/* Tabular PDF */}
+          <button
+            onClick={handleExportTabularPDF}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition shadow-sm"
+            title="Download PDF Daftar Tabel Penumpang"
+          >
+            <FileText className="w-4 h-4 text-slate-500" />
+            <span className="hidden md:inline">Rekap Tabel</span>
           </button>
         </div>
       </div>
 
-      {/* Stats and Legend Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* View Switcher & Stats (Hidden on print) */}
+      <div className="no-print bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* View Switcher Tabs */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => setViewMode('official_59')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+              viewMode === 'official_59'
+                ? 'bg-white text-midnight shadow-sm'
+                : 'text-slate-600 hover:text-midnight'
+            }`}
+          >
+            <Printer className="w-3.5 h-3.5 text-teal-deep" />
+            <span>Denah Resmi 59 Kursi (A4)</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('matrix')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+              viewMode === 'matrix'
+                ? 'bg-white text-midnight shadow-sm'
+                : 'text-slate-600 hover:text-midnight'
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-slate-500" />
+            <span>Editor Grid Baris/Kolom</span>
+          </button>
+        </div>
+
         {/* Stats */}
         <div className="flex items-center gap-4 text-xs font-semibold">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-slate-400">Total Kursi:</span>
             <span className="font-extrabold text-midnight">{selectedBus?.capacity || 59}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-slate-400">Terisi:</span>
-            <span className="font-extrabold text-teal-deep">{filledCount}</span>
+            <span className="font-extrabold text-teal-deep">{filledCount} Orang</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-slate-400">Kosong:</span>
-            <span className="font-extrabold text-slate-600">{emptyCount}</span>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-white border-2 border-slate-300 shadow-sm" />
-            <span>Kosong</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-teal-soft border border-teal-500 shadow-sm" />
-            <span>Jamaah</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-midnight border border-midnight-900 shadow-sm" />
-            <span>Tour Leader</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-teal-deep border border-teal-800 shadow-sm" />
-            <span>Pembimbing</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-slate-200 border border-slate-400 shadow-sm" />
-            <span>Sopir / Pintu</span>
+            <span className="font-extrabold text-slate-600">{emptyCount} Kursi</span>
           </div>
         </div>
       </div>
 
-      {/* Bird's Eye View Bus Canvas */}
-      <div className="bg-slate-100/80 p-4 sm:p-8 rounded-3xl border border-slate-200 flex justify-center overflow-x-auto">
-        <div className="w-full max-w-md bg-white rounded-[40px] border-4 border-midnight/80 p-4 sm:p-6 shadow-2xl relative select-none">
-          {/* Front of bus windshield */}
-          <div className="mb-6 pb-4 border-b-2 border-dashed border-slate-300 text-center relative">
-            <div className="w-24 h-2 bg-slate-300 rounded-full mx-auto mb-2" />
-            <span className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400">
-              BAGIAN DEPAN BUS (KACA UTAMA)
-            </span>
-          </div>
+      {/* ========================================================================= */}
+      {/* TAB 1: FORMAT DENAH RESMI 59 KURSI A4 (PERSIS GAMBAR TEMPLATE USER)       */}
+      {/* ========================================================================= */}
+      {viewMode === 'official_59' && (
+        <div className="flex justify-center">
+          <div className="print-a4-canvas w-full max-w-3xl bg-white border-2 border-[#A3C493] rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+            {/* Top Green Banner */}
+            <div className="bg-[#4F7336] text-white font-extrabold text-lg sm:text-xl py-2.5 rounded-lg text-center tracking-widest uppercase shadow-xs">
+              {selectedBus?.name.toUpperCase().startsWith('BUS')
+                ? selectedBus.name.toUpperCase()
+                : `BUS ${selectedBus?.name.toUpperCase()}`}
+            </div>
 
-          {/* Seat Grid Rows */}
-          <div className="space-y-2.5">
-            {rowNumbers.map(rowNum => {
-              const rowSeats = rowsGrouped[rowNum];
-              const isLastRow = rowNum === rowNumbers[rowNumbers.length - 1];
-
-              return (
-                <div key={rowNum} className="flex items-center justify-between gap-1 sm:gap-2">
-                  {/* Left seats (Cols 1, 2) */}
-                  <div className="flex items-center gap-1.5">
-                    {rowSeats
-                      .filter(s => s.col_num <= 2)
-                      .map(seat => renderSeatButton(seat, handleSeatClick))}
-                  </div>
-
-                  {/* Center Aisle or Back 5-seater middle */}
-                  {isLastRow ? (
-                    <div className="flex items-center justify-center">
-                      {rowSeats
-                        .filter(s => s.col_num === 3)
-                        .map(seat => renderSeatButton(seat, handleSeatClick))}
-                    </div>
-                  ) : (
-                    <div className="w-8 sm:w-12 text-center text-[9px] font-bold text-slate-300">
-                      • {rowNum} •
-                    </div>
-                  )}
-
-                  {/* Right seats (Cols 4, 5) */}
-                  <div className="flex items-center gap-1.5">
-                    {rowSeats
-                      .filter(s => s.col_num >= 4)
-                      .map(seat => renderSeatButton(seat, handleSeatClick))}
-                  </div>
+            {/* Row 0: PINTU MASUK / HELPER - TOUR LEADER - SOPIR */}
+            <div className="grid grid-cols-12 gap-2 sm:gap-3 items-stretch">
+              {/* Pintu Masuk / Helper */}
+              <div className="col-span-3 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
+                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                  PINTU MASUK
                 </div>
-              );
-            })}
-          </div>
+                <div className="p-1 min-h-[36px] sm:min-h-[42px] flex items-center justify-center font-extrabold text-slate-800 text-[10px] sm:text-xs">
+                  HELPER
+                </div>
+              </div>
 
-          {/* Rear of bus */}
-          <div className="mt-6 pt-4 border-t-2 border-dashed border-slate-300 text-center">
-            <span className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400">
-              BAGIAN BELAKANG BUS
-            </span>
+              {/* Spacer */}
+              <div className="col-span-1" />
+
+              {/* Tour Leader */}
+              <div className="col-span-4 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
+                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                  TOUR LEADER
+                </div>
+                <div className="p-1 min-h-[36px] sm:min-h-[42px] flex items-center justify-center text-center font-extrabold text-slate-900 text-[10px] sm:text-xs leading-tight uppercase px-1">
+                  {tlName || (
+                    <span className="text-slate-300 font-semibold text-[10px]">-</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Spacer */}
+              <div className="col-span-1" />
+
+              {/* Sopir (Driver) */}
+              <div className="col-span-3 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
+                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                  SOPIR
+                </div>
+                <div className="p-1 min-h-[36px] sm:min-h-[42px] flex flex-col items-center justify-center">
+                  {/* Steering Wheel SVG Icon */}
+                  <svg className="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="9" />
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 3v6" />
+                    <path d="M12 15v6" />
+                    <path d="M3 12h6" />
+                    <path d="M15 12h6" />
+                  </svg>
+                  <span className="font-extrabold text-slate-800 text-[9px] tracking-wider uppercase">SOPIR</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Rows 1 to 10 (2-3 Seating Layout) */}
+            <div className="space-y-2">
+              {Array.from({ length: 10 }, (_, r) => {
+                const base = r * 5;
+                const seat1 = base + 1;
+                const seat2 = base + 2;
+                const seat3 = base + 3;
+                const seat4 = base + 4;
+                const seat5 = base + 5;
+
+                return (
+                  <div key={r} className="grid grid-cols-12 gap-2 sm:gap-3 items-center">
+                    {/* Left: 2 Seats (Seat 1 & 2) */}
+                    <div className="col-span-5 grid grid-cols-2 gap-1.5 sm:gap-2">
+                      {renderOfficialSeatBox(seat1)}
+                      {renderOfficialSeatBox(seat2)}
+                    </div>
+
+                    {/* Center Gang / Aisle */}
+                    <div className="col-span-1 flex items-center justify-center">
+                      <div className="w-1.5 h-6 bg-slate-100 rounded-full" />
+                    </div>
+
+                    {/* Right: 3 Seats (Seat 3, 4, 5) */}
+                    <div className="col-span-6 grid grid-cols-3 gap-1 sm:gap-1.5">
+                      {renderOfficialSeatBox(seat3)}
+                      {renderOfficialSeatBox(seat4)}
+                      {renderOfficialSeatBox(seat5)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Row 11: PINTU KELUAR (Left) & SEATS 51, 52, 53 (Right) */}
+            <div className="grid grid-cols-12 gap-2 sm:gap-3 items-center">
+              {/* Pintu Keluar */}
+              <div className="col-span-5">
+                <div className="bg-[#4F7336] text-white font-extrabold text-[11px] sm:text-xs py-2.5 sm:py-3.5 px-2 rounded-xs text-center uppercase tracking-wider shadow-xs border border-slate-700">
+                  PINTU KELUAR
+                </div>
+              </div>
+
+              {/* Center Aisle */}
+              <div className="col-span-1 flex items-center justify-center">
+                <div className="w-1.5 h-6 bg-slate-100 rounded-full" />
+              </div>
+
+              {/* Right: Seats 51, 52, 53 */}
+              <div className="col-span-6 grid grid-cols-3 gap-1 sm:gap-1.5">
+                {renderOfficialSeatBox(51)}
+                {renderOfficialSeatBox(52)}
+                {renderOfficialSeatBox(53)}
+              </div>
+            </div>
+
+            {/* Row 12 (Back Row Across): SEATS 54 to 59 (6 Seats) */}
+            <div className="grid grid-cols-6 gap-1 sm:gap-1.5 pt-1">
+              {renderOfficialSeatBox(54)}
+              {renderOfficialSeatBox(55)}
+              {renderOfficialSeatBox(56)}
+              {renderOfficialSeatBox(57)}
+              {renderOfficialSeatBox(58)}
+              {renderOfficialSeatBox(59)}
+            </div>
+
+            {/* Footer Section: Contact Person */}
+            <div className="pt-4 border-t border-slate-200 text-xs text-slate-800 space-y-1">
+              <p className="font-extrabold text-midnight text-xs">Contact Person :</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+                <p>
+                  <span className="font-semibold text-slate-600">Koordinator Bus :</span>{' '}
+                  <span className="font-bold text-slate-900">{koordinatorName ? `${koordinatorName.toUpperCase()}  ${koordinatorPhone}` : '-'}</span>
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-600">Tour Leader :</span>{' '}
+                  <span className="font-bold text-slate-900">{tlName ? `${tlName.toUpperCase()}  ${tlPhone}` : '-'}</span>
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: EDITOR MATRIX GRID (CUSTOM ROWS & COLS)                            */}
+      {/* ========================================================================= */}
+      {viewMode === 'matrix' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-end">
+            <button
+              onClick={handleOpenDimensionsModal}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-deep border border-teal-200 text-xs font-bold rounded-xl transition shadow-sm"
+            >
+              <Sliders className="w-4 h-4" />
+              <span>Atur Baris & Kolom</span>
+            </button>
+          </div>
+
+          <div className="bg-slate-100/80 p-4 sm:p-8 rounded-3xl border border-slate-200 flex justify-center overflow-x-auto">
+            <div className="w-full max-w-md bg-white rounded-[40px] border-4 border-midnight/80 p-4 sm:p-6 shadow-2xl relative select-none">
+              <div className="mb-6 pb-4 border-b-2 border-dashed border-slate-300 text-center relative">
+                <div className="w-24 h-2 bg-slate-300 rounded-full mx-auto mb-2" />
+                <span className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400">
+                  BAGIAN DEPAN BUS (KACA UTAMA)
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {rowNumbers.map(rowNum => {
+                  const rowSeats = rowsGrouped[rowNum] || [];
+                  const isLastRow = rowNum === rowNumbers[rowNumbers.length - 1];
+
+                  return (
+                    <div key={rowNum} className="flex items-center justify-between gap-1 sm:gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {rowSeats
+                          .filter(s => s.col_num <= 2)
+                          .map(seat => renderSeatButton(seat, handleSeatClick))}
+                      </div>
+
+                      {isLastRow ? (
+                        <div className="flex items-center justify-center">
+                          {rowSeats
+                            .filter(s => s.col_num === 3)
+                            .map(seat => renderSeatButton(seat, handleSeatClick))}
+                        </div>
+                      ) : (
+                        <div className="w-8 sm:w-12 text-center text-[9px] font-bold text-slate-300">
+                          • {rowNum} •
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        {rowSeats
+                          .filter(s => s.col_num >= 4)
+                          .map(seat => renderSeatButton(seat, handleSeatClick))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 pt-4 border-t-2 border-dashed border-slate-300 text-center">
+                <span className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400">
+                  BAGIAN BELAKANG BUS
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL: Klik Kursi -> Pilih Jamaah / Petugas                               */}
@@ -342,7 +650,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <div className="p-4 bg-midnight text-white flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-sm">
-                  Kursi {selectedSeat.seat_number} • {selectedBus?.name}
+                  {selectedSeat.seat_number} • {selectedBus?.name}
                 </h3>
                 <p className="text-[11px] text-teal-soft">
                   {selectedSeat.occupant_name
@@ -470,7 +778,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
 
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
               <button
-                onClick={(e) => {
+                onClick={() => {
                   setEditingCellSeat(selectedSeat);
                   setCellEditNumber(selectedSeat.seat_number);
                   setCellEditRole(selectedSeat.role);
@@ -492,9 +800,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: Pengaturan Jumlah Denah Bus (Baris / Rows & Kolom / Columns)       */}
-      {/* ========================================================================= */}
+      {/* MODAL: Dimensions */}
       {isDimensionModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
@@ -503,7 +809,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 <Sliders className="w-5 h-5 text-teal-soft" />
                 <div>
                   <h3 className="font-bold text-sm">Pengaturan Denah {selectedBus?.name}</h3>
-                  <p className="text-[11px] text-teal-soft">Konfigurasi Jumlah Baris (Row) & Kolom (Column)</p>
+                  <p className="text-[11px] text-teal-soft">Konfigurasi Jumlah Baris & Kolom</p>
                 </div>
               </div>
               <button
@@ -515,84 +821,36 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             </div>
 
             <form onSubmit={handleApplyDimensions} className="p-5 space-y-4">
-              {/* Jumlah Baris (Rows) */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700">
-                    Jumlah Baris (Total Rows): <span className="text-teal-deep text-sm">{configRows}</span> Baris
-                  </label>
-                  <span className="text-[11px] text-slate-400">Kisaran 8 - 18</span>
-                </div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Jumlah Baris (Total Rows)
+                </label>
                 <input
-                  type="range"
+                  type="number"
                   min={8}
-                  max={18}
+                  max={20}
                   value={configRows}
                   onChange={e => setConfigRows(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-midnight"
+                  required
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                  <span>8 Baris (Pendek)</span>
-                  <span>13 Baris (Standar 59)</span>
-                  <span>18 Baris (Panjang)</span>
-                </div>
               </div>
 
-              {/* Jumlah Kolom (Columns) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Konfigurasi Kolom (Columns)
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Konfigurasi Kolom Kursi
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${
-                    configCols === 5
-                      ? 'bg-teal-50 border-teal-deep text-midnight font-bold'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="cols"
-                      checked={configCols === 5}
-                      onChange={() => setConfigCols(5)}
-                      className="sr-only"
-                    />
-                    <span className="text-xs">5 Kolom (2 - 2 Aisle)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">2 kursi kiri, gang tengah, 2 kursi kanan (Standar Eksekutif)</span>
-                  </label>
-
-                  <label className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${
-                    configCols === 4
-                      ? 'bg-teal-50 border-teal-deep text-midnight font-bold'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="cols"
-                      checked={configCols === 4}
-                      onChange={() => setConfigCols(4)}
-                      className="sr-only"
-                    />
-                    <span className="text-xs">4 Kolom (2 - 2 Rapat)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Susunan 2-2 rapat / medium bus pariwisata</span>
-                  </label>
-                </div>
+                <select
+                  value={configCols}
+                  onChange={e => setConfigCols(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                >
+                  <option value={5}>2 - 3 (Standar Pariwisata 59 Kursi)</option>
+                  <option value={4}>2 - 2 (Eksekutif 48-50 Kursi)</option>
+                </select>
               </div>
 
-              {/* Estimasi Kapasitas */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Estimasi Total Kapasitas Kursi:</span>
-                  <span className="font-extrabold text-teal-deep text-sm">
-                    {/* Baris depan: TL + PB = 2 kursi. Baris tengah: (configRows - 2) * 4. Baris belakang: configCols kursi */}
-                    {2 + (configRows - 2) * 4 + configCols} Kursi Penumpang & Petugas
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  *Penumpang yang sudah terpasang pada kursi lama akan otomatis dipertahankan jika nomor kursinya sesuai.
-                </p>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsDimensionModalOpen(false)}
@@ -602,7 +860,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-midnight rounded-xl hover:bg-midnight-700 shadow-md"
+                  className="px-4 py-2 text-xs font-bold text-white bg-midnight hover:bg-midnight-700 rounded-xl shadow-md"
                 >
                   Terapkan Denah Baru
                 </button>
@@ -612,14 +870,15 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: Kustomisasi Sel Kursi (Ubah Tipe / Role & Nomor Kursi)             */}
-      {/* ========================================================================= */}
+      {/* MODAL: Single Cell Edit */}
       {editingCellSeat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden">
             <div className="p-4 bg-midnight text-white flex items-center justify-between">
-              <h3 className="font-bold text-sm">Kustomisasi Sel: Baris {editingCellSeat.row_num}, Kolom {editingCellSeat.col_num}</h3>
+              <div>
+                <h3 className="font-bold text-sm">Sesuaikan Kursi {editingCellSeat.seat_number}</h3>
+                <p className="text-[11px] text-teal-soft">Baris {editingCellSeat.row_num}, Kolom {editingCellSeat.col_num}</p>
+              </div>
               <button
                 onClick={() => setEditingCellSeat(null)}
                 className="p-1 text-slate-300 hover:text-white rounded-lg hover:bg-white/10"
@@ -628,52 +887,50 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
               </button>
             </div>
 
-            <form onSubmit={handleSaveCellChanges} className="p-5 space-y-3.5">
+            <form onSubmit={handleSaveCellChanges} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="text-xs font-bold text-slate-700 block mb-1">
                   Nomor / Label Kursi
                 </label>
                 <input
                   type="text"
                   value={cellEditNumber}
                   onChange={e => setCellEditNumber(e.target.value)}
-                  placeholder="Contoh: 1A, TL, VIP-1..."
                   required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-bold"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tipe / Peran Sel Ini
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Tipe / Peran Kursi
                 </label>
                 <select
                   value={cellEditRole}
-                  onChange={e => setCellEditRole(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                  onChange={e => setCellEditRole(e.target.value as SeatRole)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
                 >
-                  <option value="empty">Kursi Penumpang Biasa (Jamaah)</option>
+                  <option value="empty">Kursi Penumpang / Jamaah</option>
                   <option value="tour_leader">Kursi Tour Leader (TL)</option>
                   <option value="pembimbing">Kursi Pembimbing (PB)</option>
-                  <option value="driver">Posisi Sopir (Driver)</option>
-                  <option value="door">Pintu Masuk / Keluar (Door)</option>
-                  <option value="facility">Fasilitas / Toilet / Dispenser</option>
+                  <option value="door">Pintu Keluar / Masuk</option>
+                  <option value="driver">Posisi Sopir</option>
                 </select>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingCellSeat(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-midnight rounded-xl hover:bg-midnight-700 shadow-md"
+                  className="px-4 py-2 text-xs font-bold text-white bg-midnight hover:bg-midnight-700 rounded-xl shadow-md"
                 >
-                  Simpan Sel
+                  Simpan Perubahan
                 </button>
               </div>
             </form>
@@ -685,7 +942,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
 };
 
 /**
- * Render individual seat button in canvas
+ * Render individual seat button in matrix canvas
  */
 function renderSeatButton(seat: BusSeat, onClick: (seat: BusSeat) => void) {
   if (seat.role === 'driver') {
@@ -707,7 +964,7 @@ function renderSeatButton(seat: BusSeat, onClick: (seat: BusSeat) => void) {
         key={seat.id}
         onClick={() => onClick(seat)}
         className="w-12 h-12 rounded-xl bg-amber-50 border-2 border-amber-300 border-dashed flex flex-col items-center justify-center text-amber-800 shadow-sm cursor-pointer hover:bg-amber-100 transition"
-        title="Pintu Masuk/Keluar (Klik untuk ubah)"
+        title="Pintu Masuk/Keluar"
       >
         <span className="text-[9px] font-black uppercase">PINTU</span>
         <span className="text-[8px] text-amber-600 font-bold">Door</span>
@@ -715,80 +972,30 @@ function renderSeatButton(seat: BusSeat, onClick: (seat: BusSeat) => void) {
     );
   }
 
-  if (seat.role === 'facility') {
-    return (
-      <div
-        key={seat.id}
-        onClick={() => onClick(seat)}
-        className="w-12 h-12 rounded-xl bg-sky-50 border-2 border-sky-300 flex flex-col items-center justify-center text-sky-800 shadow-sm cursor-pointer hover:bg-sky-100 transition"
-        title="Fasilitas / Toilet / Dispenser"
-      >
-        <span className="text-[9px] font-black uppercase">TOILET</span>
-        <span className="text-[8px] text-sky-600 font-bold">Fasilitas</span>
-      </div>
-    );
-  }
-
-  // Tour Leader Seat
-  if (seat.role === 'tour_leader') {
-    return (
-      <button
-        key={seat.id}
-        onClick={() => onClick(seat)}
-        className="w-12 h-12 rounded-xl bg-midnight border-2 border-midnight-950 text-white flex flex-col items-center justify-center shadow-md hover:scale-105 transition"
-        title={`Tour Leader: ${seat.occupant_name || 'Belum Diisi'}`}
-      >
-        <span className="text-[10px] font-extrabold text-teal-soft">{seat.seat_number}</span>
-        <span className="text-[8px] font-bold truncate max-w-[40px] px-0.5">
-          {seat.occupant_name ? seat.occupant_name.split(' ')[0] : 'TL'}
-        </span>
-      </button>
-    );
-  }
-
-  // Pembimbing Seat
-  if (seat.role === 'pembimbing') {
-    return (
-      <button
-        key={seat.id}
-        onClick={() => onClick(seat)}
-        className="w-12 h-12 rounded-xl bg-teal-deep border-2 border-teal-800 text-white flex flex-col items-center justify-center shadow-md hover:scale-105 transition"
-        title={`Pembimbing: ${seat.occupant_name || 'Belum Diisi'}`}
-      >
-        <span className="text-[10px] font-extrabold text-teal-soft">{seat.seat_number}</span>
-        <span className="text-[8px] font-bold truncate max-w-[40px] px-0.5">
-          {seat.occupant_name ? seat.occupant_name.split(' ')[0] : 'PB'}
-        </span>
-      </button>
-    );
-  }
-
-  // Occupied Jamaah Seat
   if (seat.occupant_name) {
     return (
       <button
         key={seat.id}
         onClick={() => onClick(seat)}
-        className="w-12 h-12 rounded-xl bg-teal-soft border-2 border-teal-500 text-midnight flex flex-col items-center justify-center shadow-md hover:scale-105 transition"
+        className="w-14 h-12 rounded-xl bg-teal-soft border-2 border-teal-500 text-midnight flex flex-col items-center justify-center shadow-md hover:scale-105 transition px-1"
         title={`Jamaah: ${seat.occupant_name}`}
       >
-        <span className="text-[10px] font-extrabold">{seat.seat_number}</span>
-        <span className="text-[8px] font-bold text-midnight truncate max-w-[42px] px-0.5">
+        <span className="text-[9px] font-extrabold">{seat.seat_number}</span>
+        <span className="text-[8px] font-bold text-midnight truncate max-w-[48px] px-0.5 leading-tight uppercase">
           {seat.occupant_name.split(' ')[0]}
         </span>
       </button>
     );
   }
 
-  // Empty Seat
   return (
     <button
       key={seat.id}
       onClick={() => onClick(seat)}
-      className="w-12 h-12 rounded-xl bg-white border-2 border-slate-300 text-slate-600 hover:border-teal-deep hover:text-teal-deep flex flex-col items-center justify-center shadow-sm hover:scale-105 transition"
+      className="w-14 h-12 rounded-xl bg-white border-2 border-slate-300 text-slate-600 hover:border-teal-deep hover:text-teal-deep flex flex-col items-center justify-center shadow-sm hover:scale-105 transition"
       title="Kursi Kosong - Klik untuk isi"
     >
-      <span className="text-[10px] font-bold">{seat.seat_number}</span>
+      <span className="text-[9px] font-bold">{seat.seat_number}</span>
       <span className="text-[8px] text-slate-300 font-semibold">Kosong</span>
     </button>
   );

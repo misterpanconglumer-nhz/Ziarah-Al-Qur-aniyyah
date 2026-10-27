@@ -21,7 +21,8 @@ import {
   DEMO_PAYMENTS,
   DEMO_BUDGET,
   DEMO_EXPENSES,
-  generateDefaultSeatsForBus
+  generateDefaultSeatsForBus,
+  generate59StandardSeats
 } from '../services/demoData';
 import { checkDuplicateName } from '../utils/duplicateDetection';
 
@@ -82,6 +83,7 @@ interface AppContextType {
   freeSeat: (busId: string, seatNumber: string) => Promise<{ success: boolean; error?: string }>;
   saveCustomBusLayout: (busId: string, seats: BusSeat[]) => Promise<void>;
   updateBusLayoutDimensions: (busId: string, totalRows: number, totalCols: number) => Promise<{ success: boolean; newSeatsCount: number }>;
+  standardizeBusTo59Seats: (busId: string) => Promise<void>;
 
   // Payments
   addPayment: (data: Omit<PaymentTransaction, 'id' | 'status' | 'created_at'>) => Promise<{ success: boolean; error?: string }>;
@@ -748,10 +750,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Assign to chosen seat
     const targetBus = busesList.find(b => b.id === busId);
-    const updatedSeats = currentSeats.map(seat => {
-      if (seat.seat_number === seatNumber) {
+    let matched = false;
+    let updatedSeats = currentSeats.map(seat => {
+      const match =
+        seat.seat_number === seatNumber ||
+        seat.seat_number.replace(/^SEAT\s*/i, '') === seatNumber.replace(/^SEAT\s*/i, '');
+      if (match) {
+        matched = true;
         return {
           ...seat,
+          seat_number: seatNumber,
           role,
           occupant_id: occupantId,
           occupant_name: occupantName,
@@ -760,6 +768,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return seat;
     });
+
+    if (!matched) {
+      updatedSeats = [
+        ...updatedSeats,
+        {
+          id: `${busId}-${seatNumber.replace(/\s+/g, '-')}`,
+          bus_id: busId,
+          seat_number: seatNumber,
+          row_num: 1,
+          col_num: 1,
+          role,
+          occupant_id: occupantId,
+          occupant_name: occupantName,
+          occupant_role_label: role === 'tour_leader' ? 'Tour Leader' : role === 'pembimbing' ? 'Pembimbing' : 'Jamaah'
+        }
+      ];
+    }
 
     setBusSeatsMap(prev => ({ ...prev, [busId]: updatedSeats }));
 
@@ -781,7 +806,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let occupantIdToClear: string | undefined;
 
     const updatedSeats = currentSeats.map(seat => {
-      if (seat.seat_number === seatNumber) {
+      const match =
+        seat.seat_number === seatNumber ||
+        seat.seat_number.replace(/^SEAT\s*/i, '') === seatNumber.replace(/^SEAT\s*/i, '');
+      if (match) {
         occupantIdToClear = seat.occupant_id;
         return {
           ...seat,
@@ -1001,6 +1029,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, newSeatsCount: passengerCount };
   };
 
+  const standardizeBusTo59Seats = async (busId: string) => {
+    const existing = getSeatsForBus(busId);
+    const new59Seats = generate59StandardSeats(busId, existing);
+    setBusSeatsMap(prev => ({ ...prev, [busId]: new59Seats }));
+    await updateBus(busId, { capacity: 59 });
+    showToast(`Denah ${busId} berhasil distandarisasi ke format 59 Kursi Resmi (2-3)`, 'success');
+  };
+
   // Payments
   const addPayment = async (data: Omit<PaymentTransaction, 'id' | 'status' | 'created_at'>) => {
     const newId = `TRX-${String(paymentsList.length + 1).padStart(4, '0')}`;
@@ -1164,6 +1200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         freeSeat,
         saveCustomBusLayout,
         updateBusLayoutDimensions,
+        standardizeBusTo59Seats,
         addPayment,
         voidPayment,
         addBudgetItem,

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatRupiah, formatDateId } from '../utils/formatters';
 import { exportJamaahToExcel, exportPaymentsToExcel } from '../utils/excel';
-import { exportFinancialReportPDF } from '../utils/pdf';
+import { exportFinancialReportPDF, exportBusVisualChartPDF } from '../utils/pdf';
 import { 
   FileText, 
   Download, 
@@ -26,6 +26,7 @@ export const ReportsView: React.FC = () => {
     paymentsList, 
     budgetList, 
     expensesList,
+    getSeatsForBus,
     showToast 
   } = useApp();
 
@@ -312,19 +313,15 @@ export const ReportsView: React.FC = () => {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => exportFinancialReportPDF({
-                        totalParticipants: pass.length,
-                        totalTargetBill,
-                        totalReceived,
-                        totalOutstanding,
-                        totalBudget,
-                        totalExpenses,
-                        actualCashBalance
-                      })}
-                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-100 transition flex items-center gap-1"
+                      onClick={() => {
+                        const seats = getSeatsForBus(bus.id);
+                        exportBusVisualChartPDF(bus, seats, bus.staff || [], rombonganList);
+                        showToast(`Denah resmi 59 kursi ${bus.name} berhasil diunduh!`, 'success');
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-100 transition flex items-center gap-1 shadow-sm"
                     >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Cetak Denah</span>
+                      <Printer className="w-3.5 h-3.5 text-teal-deep" />
+                      <span>Cetak Denah A4</span>
                     </button>
                   </div>
                 </div>

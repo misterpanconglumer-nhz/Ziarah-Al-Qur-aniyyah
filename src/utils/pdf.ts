@@ -1,10 +1,231 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Bus, BusSeat, Jamaah, BusStaff } from '../types';
+import { Bus, BusSeat, Jamaah, BusStaff, Rombongan } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
 
 /**
- * Generate and download Bus Seating Chart PDF
+ * Export Official 59-Seat Visual Bus Layout PDF (Format Cetak A4 Standar 2-3 Pariwisata)
+ */
+export function exportBusVisualChartPDF(
+  bus: Bus,
+  seats: BusSeat[],
+  staffList: BusStaff[] = [],
+  rombonganList: Rombongan[] = []
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // Soft olive green page border
+  doc.setDrawColor(163, 196, 147); // #A3C493
+  doc.setLineWidth(1.2);
+  doc.roundedRect(6, 6, 198, 285, 2.5, 2.5, 'S');
+
+  // Header Box (Dark Olive Green #4F7336)
+  doc.setFillColor(79, 115, 54);
+  doc.roundedRect(10, 10, 190, 12, 1.5, 1.5, 'F');
+
+  // Header Title: e.g. "BUS 09" or "BUS 01"
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  const busTitle = bus.name.toUpperCase().startsWith('BUS')
+    ? bus.name.toUpperCase()
+    : `BUS ${bus.name.toUpperCase()}`;
+  doc.text(busTitle, 105, 18, { align: 'center' });
+
+  // Staff and Coordinator info
+  const tl = staffList.find(s => s.role === 'tour_leader');
+  const romb = rombonganList.find(r => r.bus_id === bus.id);
+  const koordinatorName = romb?.coordinator_name || staffList.find(s => s.role === 'pembimbing')?.name || '';
+  const koordinatorPhone = romb?.coordinator_phone || staffList.find(s => s.role === 'pembimbing')?.phone || '';
+  const tlName = tl?.name || '';
+  const tlPhone = tl?.phone || '';
+
+  // Map seats 1..59
+  const seatMap = new Map<number, BusSeat>();
+  seats.forEach(s => {
+    const numMatch = s.seat_number.match(/\d+/);
+    if (numMatch) {
+      const num = parseInt(numMatch[0], 10);
+      if (num >= 1 && num <= 59 && !seatMap.has(num)) {
+        seatMap.set(num, s);
+      }
+    }
+  });
+
+  // Fallback for seats without explicit numbers in seat_number
+  const unmapped = seats.filter(
+    s => s.occupant_name && (!s.seat_number.match(/\d+/) || parseInt(s.seat_number.match(/\d+/)![0], 10) > 59)
+  );
+  let curNum = 1;
+  unmapped.forEach(s => {
+    while (seatMap.has(curNum) && curNum <= 59) curNum++;
+    if (curNum <= 59) seatMap.set(curNum, s);
+  });
+
+  // Row 0: Front of Bus
+  const yRow0 = 24.5;
+  const hRow0 = 12.5;
+
+  // Box 1: PINTU MASUK / HELPER
+  drawCustomBox(doc, 10, yRow0, 36, hRow0, 'PINTU MASUK', 'HELPER');
+
+  // Box 2: TOUR LEADER
+  drawCustomBox(doc, 74, yRow0, 42, hRow0, 'TOUR LEADER', tlName);
+
+  // Box 3: SOPIR
+  drawCustomBox(doc, 164, yRow0, 36, hRow0, 'SOPIR', 'SOPIR');
+
+  // Seat box drawing helper
+  function drawSeat(x: number, y: number, w: number, h: number, seatNum: number) {
+    const s = seatMap.get(seatNum);
+    const occupant = s?.occupant_name || '';
+
+    // Border
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, w, h, 'FD');
+
+    // Header strip
+    const headerH = 4.2;
+    doc.setFillColor(232, 236, 240); // Light gray
+    doc.rect(x, y, w, headerH, 'FD');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.text(`SEAT ${seatNum}`, x + w / 2, y + 3.1, { align: 'center' });
+
+    // Occupant name
+    if (occupant) {
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'bold');
+      let fontSize = 7.5;
+      if (occupant.length > 26) fontSize = 5.8;
+      else if (occupant.length > 18) fontSize = 6.6;
+      doc.setFontSize(fontSize);
+
+      const splitLines = doc.splitTextToSize(occupant.toUpperCase(), w - 2);
+      const textY = y + headerH + ((h - headerH) / 2) + (splitLines.length === 1 ? 1.2 : 0);
+      doc.text(splitLines, x + w / 2, textY, { align: 'center', baseline: 'middle' });
+    }
+  }
+
+  function drawCustomBox(doc: jsPDF, x: number, y: number, w: number, h: number, headerText: string, contentText: string) {
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, w, h, 'FD');
+
+    const headerH = 4.2;
+    doc.setFillColor(232, 236, 240);
+    doc.rect(x, y, w, headerH, 'FD');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.text(headerText, x + w / 2, y + 3.1, { align: 'center' });
+
+    if (contentText) {
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'bold');
+      let fontSize = 7.2;
+      if (contentText.length > 20) fontSize = 6;
+      doc.setFontSize(fontSize);
+
+      const splitLines = doc.splitTextToSize(contentText.toUpperCase(), w - 2);
+      const textY = y + headerH + ((h - headerH) / 2) + (splitLines.length === 1 ? 1.2 : 0);
+      doc.text(splitLines, x + w / 2, textY, { align: 'center', baseline: 'middle' });
+    }
+  }
+
+  // Rows 1 to 10
+  const startY = 40;
+  const seatH = 13.2;
+  const rowGap = 3.6;
+  const seatWLeft = 36;
+  const seatWRight = 30.5;
+
+  for (let r = 0; r < 10; r++) {
+    const curY = startY + r * (seatH + rowGap);
+    const base = r * 5;
+
+    // Left seats: base + 1, base + 2
+    drawSeat(10, curY, seatWLeft, seatH, base + 1);
+    drawSeat(49, curY, seatWLeft, seatH, base + 2);
+
+    // Right seats: base + 3, base + 4, base + 5
+    drawSeat(105, curY, seatWRight, seatH, base + 3);
+    drawSeat(138, curY, seatWRight, seatH, base + 4);
+    drawSeat(171, curY, seatWRight, seatH, base + 5);
+  }
+
+  // Row 11: PINTU KELUAR (Left) & Seats 51, 52, 53 (Right)
+  const yRow11 = startY + 10 * (seatH + rowGap);
+
+  // Pintu Keluar
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.3);
+  doc.setFillColor(79, 115, 54); // #4F7336 Green
+  doc.rect(10, yRow11, 36, seatH, 'FD');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('PINTU KELUAR', 28, yRow11 + seatH / 2 + 1.2, { align: 'center' });
+
+  // Right seats: 51, 52, 53
+  drawSeat(105, yRow11, seatWRight, seatH, 51);
+  drawSeat(138, yRow11, seatWRight, seatH, 52);
+  drawSeat(171, yRow11, seatWRight, seatH, 53);
+
+  // Row 12 (Back Row Across): Seats 54 to 59 (6 seats across)
+  const yRow12 = startY + 11 * (seatH + rowGap);
+  const backSeatW = 31.9; // 31.9 * 6 = 191.4mm
+  for (let b = 0; b < 6; b++) {
+    const seatNum = 54 + b;
+    const x = 10 + b * backSeatW;
+    drawSeat(x, yRow12, backSeatW, seatH, seatNum);
+  }
+
+  // Footer Section
+  const yFooter = yRow12 + seatH + 4.5;
+  doc.setTextColor(20, 30, 45);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('Contact Person :', 10, yFooter);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text(
+    `Koordinator Bus : ${koordinatorName ? `${koordinatorName.toUpperCase()}    ${koordinatorPhone}` : '-'}`,
+    10,
+    yFooter + 4.5
+  );
+  doc.text(
+    `Tour Leader     : ${tlName ? `${tlName.toUpperCase()}    ${tlPhone}` : '-'}`,
+    10,
+    yFooter + 8.5
+  );
+
+  // Bottom watermark
+  doc.setFontSize(6.5);
+  doc.setTextColor(130, 140, 150);
+  doc.text(
+    `Sistem Operasional Ziarah Akbar 2027 • Tanggal Cetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    105,
+    288,
+    { align: 'center' }
+  );
+
+  doc.save(`Denah_Resmi_${bus.name.replace(/\s+/g, '_')}_59_Kursi.pdf`);
+}
+
+/**
+ * Generate and download Bus Seating Chart PDF (Tabular Manifest)
  */
 export function exportBusSeatChartPDF(
   bus: Bus,

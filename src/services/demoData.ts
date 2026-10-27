@@ -5,6 +5,7 @@ import {
   BusStaff,
   BusSeat,
   BusLayoutConfig,
+  SeatRole,
   PaymentTransaction,
   BudgetItem,
   ExpenseTransaction,
@@ -381,9 +382,126 @@ export const DEMO_EXPENSES: ExpenseTransaction[] = [
 ];
 
 /**
+ * Generate standard 59-seat Pariwisata layout (2-3 configuration: Rows 1-10 [2+3], Row 11 [Pintu Keluar + 3], Row 12 [6 back seats])
+ */
+export function generate59StandardSeats(busId: string, existingSeats: BusSeat[] = []): BusSeat[] {
+  // Extract existing occupants mapped by seat index 1..59
+  const occupantMap: Record<number, { name: string; id?: string; role?: SeatRole; label?: string }> = {};
+
+  const occupiedList = existingSeats.filter(
+    s => s.occupant_name && s.role !== 'driver' && s.role !== 'door' && s.role !== 'facility'
+  );
+  occupiedList.forEach((s, idx) => {
+    const numMatch = s.seat_number.match(/\d+/);
+    const seatIdx = numMatch ? parseInt(numMatch[0], 10) : idx + 1;
+    if (seatIdx >= 1 && seatIdx <= 59 && !occupantMap[seatIdx]) {
+      occupantMap[seatIdx] = {
+        name: s.occupant_name!,
+        id: s.occupant_id,
+        role: s.role,
+        label: s.occupant_role_label
+      };
+    }
+  });
+
+  // Assign any remaining unmapped occupants
+  let nextIdx = 1;
+  occupiedList.forEach(s => {
+    const numMatch = s.seat_number.match(/\d+/);
+    const seatIdx = numMatch ? parseInt(numMatch[0], 10) : 0;
+    if (seatIdx < 1 || seatIdx > 59 || occupantMap[seatIdx]?.name !== s.occupant_name) {
+      while (occupantMap[nextIdx] && nextIdx <= 59) nextIdx++;
+      if (nextIdx <= 59) {
+        occupantMap[nextIdx] = {
+          name: s.occupant_name!,
+          id: s.occupant_id,
+          role: s.role,
+          label: s.occupant_role_label
+        };
+      }
+    }
+  });
+
+  const seats: BusSeat[] = [];
+
+  // Rows 1 to 10: 5 seats per row (2 Left, 3 Right)
+  for (let r = 1; r <= 10; r++) {
+    const base = (r - 1) * 5;
+    [
+      { num: base + 1, col: 1 },
+      { num: base + 2, col: 2 },
+      { num: base + 3, col: 4 },
+      { num: base + 4, col: 5 },
+      { num: base + 5, col: 6 }
+    ].forEach(({ num, col }) => {
+      const occ = occupantMap[num];
+      seats.push({
+        id: `${busId}-SEAT-${num}`,
+        bus_id: busId,
+        seat_number: `SEAT ${num}`,
+        row_num: r,
+        col_num: col,
+        role: occ?.role || (occ ? 'jamaah' : 'empty'),
+        occupant_id: occ?.id,
+        occupant_name: occ?.name,
+        occupant_role_label: occ?.label
+      });
+    });
+  }
+
+  // Row 11: PINTU KELUAR (col 1, role: 'door') & Seats 51, 52, 53 (cols 4, 5, 6)
+  seats.push({
+    id: `${busId}-PINTU-KELUAR`,
+    bus_id: busId,
+    seat_number: 'PINTU KELUAR',
+    row_num: 11,
+    col_num: 1,
+    role: 'door',
+    occupant_role_label: 'Pintu Keluar'
+  });
+
+  [51, 52, 53].forEach((num, idx) => {
+    const occ = occupantMap[num];
+    seats.push({
+      id: `${busId}-SEAT-${num}`,
+      bus_id: busId,
+      seat_number: `SEAT ${num}`,
+      row_num: 11,
+      col_num: 4 + idx,
+      role: occ?.role || (occ ? 'jamaah' : 'empty'),
+      occupant_id: occ?.id,
+      occupant_name: occ?.name,
+      occupant_role_label: occ?.label
+    });
+  });
+
+  // Row 12 (Back Row Across): Seats 54 to 59 (cols 1 to 6)
+  [54, 55, 56, 57, 58, 59].forEach((num, idx) => {
+    const occ = occupantMap[num];
+    seats.push({
+      id: `${busId}-SEAT-${num}`,
+      bus_id: busId,
+      seat_number: `SEAT ${num}`,
+      row_num: 12,
+      col_num: idx + 1,
+      role: occ?.role || (occ ? 'jamaah' : 'empty'),
+      occupant_id: occ?.id,
+      occupant_name: occ?.name,
+      occupant_role_label: occ?.label
+    });
+  });
+
+  return seats;
+}
+
+/**
  * Generate 59/60 default seat configuration layout for a bus
  */
 export function generateDefaultSeatsForBus(busId: string, capacity: number = 59): BusSeat[] {
+  if (capacity === 59) {
+    return generate59StandardSeats(busId);
+  }
+
   const seats: BusSeat[] = [];
   
   // Row 1: Col 1 is Driver, Col 5 is Front Door
@@ -428,10 +546,8 @@ export function generateDefaultSeatsForBus(busId: string, capacity: number = 59)
   });
 
   // Standard passenger rows (Row 2 to Row 13)
-  // Usually rows 2-12: 4 seats per row (2-2 configuration: col 1,2 and 4,5)
-  // Row 13 (Back row): 5 seats across (col 1, 2, 3, 4, 5)
   let seatCounter = 1;
-  const standardRows = Math.floor((capacity - 5) / 4); // ~13 or 14 rows total
+  const standardRows = Math.floor((capacity - 5) / 4);
 
   for (let r = 2; r <= 1 + standardRows; r++) {
     // Left side: A, B
