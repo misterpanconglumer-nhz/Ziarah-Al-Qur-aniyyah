@@ -137,30 +137,30 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-3 sm:space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Header Compact */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
-            <BusIcon className="w-6 h-6 text-teal-deep" />
-            <span>Data Armada Bus & Petugas Operasional</span>
+          <h2 className="text-lg sm:text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
+            <BusIcon className="w-5 h-5 sm:w-6 sm:h-6 text-teal-deep" />
+            <span>Armada Bus & Petugas</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Kelola puluhan unit bus, kapasitas 59/60 kursi, serta penugasan Tour Leader dan Pembimbing.
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 line-clamp-1">
+            Kelola unit bus, kapasitas kursi, serta penugasan TL & Pembimbing.
           </p>
         </div>
 
         <button
           onClick={handleOpenAddBus}
-          className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md self-start sm:self-auto"
+          className="flex items-center gap-1 px-3 py-1.5 sm:px-4 sm:py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-sm shrink-0"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>Tambah Bus</span>
         </button>
       </div>
 
-      {/* Grid of Buses (Compact & Responsive) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+      {/* Grid of Buses (Ultra-Compact on Mobile) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
         {busesList.map(bus => {
           const passengers = jamaahList.filter(j => j.bus_id === bus.id);
           const staff = bus.staff || [];
@@ -173,48 +173,47 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
           return (
             <div 
               key={bus.id} 
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+              className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
             >
-              {/* Card Header Compact */}
-              <div className="p-3.5 pb-2.5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-deep block truncate">
-                      {bus.operator}
-                    </span>
-                    <h3 className="font-extrabold text-sm text-midnight tracking-tight truncate">
-                      {bus.name}
-                    </h3>
-                    <p className="text-[10px] text-slate-400 truncate leading-tight">
+              {/* Header: Nama Bus + Operator + Status */}
+              <div className="p-2.5 sm:p-3 pb-2 border-b border-slate-100 bg-gradient-to-r from-slate-50/70 to-white">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1.5 truncate">
+                      <h3 className="font-extrabold text-xs sm:text-sm text-midnight tracking-tight truncate">
+                        {bus.name}
+                      </h3>
+                      <span className="text-[10px] font-semibold text-teal-deep truncate">
+                        • {bus.operator}
+                      </span>
+                    </div>
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 truncate">
                       {bus.bus_type || 'Executive Bus'}
                     </p>
                   </div>
 
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${
+                  <span className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] font-bold shrink-0 ${
                     bus.status === 'active' 
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                       : bus.status === 'full' 
                       ? 'bg-rose-50 text-rose-700 border border-rose-200' 
                       : 'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
-                    {bus.status === 'active' ? 'Siap Jalan' : bus.status === 'full' ? 'Penuh' : 'Standby'}
+                    {bus.status === 'active' ? 'Siap' : bus.status === 'full' ? 'Penuh' : 'Standby'}
                   </span>
                 </div>
 
-                {/* Compact Capacity Counter & Progress Bar */}
-                <div className="mt-2.5 pt-2 border-t border-slate-100/80">
-                  <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="text-slate-500 font-medium">
-                      Kapasitas: <strong className="text-midnight">{bus.capacity}</strong>
+                {/* Kapasitas & Mini Progress Bar */}
+                <div className="mt-1.5 sm:mt-2">
+                  <div className="flex items-center justify-between text-[10px] sm:text-[11px] mb-1">
+                    <span className="text-slate-600 font-medium">
+                      Isi: <strong className="text-teal-deep">{totalOccupants}</strong>/{bus.capacity}
                     </span>
-                    <div className="flex items-center gap-2 text-[10px]">
-                      <span className="text-teal-deep font-bold">Terisi {totalOccupants}</span>
-                      <span className="text-slate-300">•</span>
-                      <span className="text-emerald-700 font-bold">Sisa {remainingSeats}</span>
-                    </div>
+                    <span className={`font-bold ${remainingSeats === 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      Sisa {remainingSeats} Kursi
+                    </span>
                   </div>
-                  {/* Mini Progress Bar */}
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="w-full bg-slate-100 h-1 sm:h-1.5 rounded-full overflow-hidden">
                     <div 
                       className={`h-full transition-all ${
                         percentFilled >= 100 
@@ -229,57 +228,32 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
                 </div>
               </div>
 
-              {/* Staff & Occupant Section Compact */}
-              <div className="p-3.5 py-2.5 space-y-2 text-xs flex-1">
-                {/* Tour Leader & Pembimbing in neat rows */}
-                <div className="space-y-1 bg-slate-50/70 p-2 rounded-xl border border-slate-100 text-[11px]">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] text-slate-400 font-bold shrink-0">TL:</span>
-                    <span className="font-semibold text-midnight truncate text-right flex-1">
-                      {tl ? tl.name : <em className="text-slate-400 font-normal">Belum diatur</em>}
-                    </span>
-                    {tl?.seat_number && (
-                      <span className="px-1 py-0.2 bg-midnight/10 text-midnight text-[9px] font-mono font-bold rounded shrink-0">
-                        {tl.seat_number}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between gap-1 border-t border-slate-200/50 pt-1">
-                    <span className="text-[10px] text-slate-400 font-bold shrink-0">PB:</span>
-                    <span className="font-semibold text-midnight truncate text-right flex-1">
-                      {pembimbingList.length > 0 
-                        ? pembimbingList.map(p => p.name).join(', ') 
-                        : <em className="text-slate-400 font-normal">Belum diatur</em>}
-                    </span>
-                    {pembimbingList[0]?.seat_number && (
-                      <span className="px-1 py-0.2 bg-teal-50 text-teal-deep text-[9px] font-mono font-bold rounded shrink-0">
-                        {pembimbingList[0].seat_number}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Jamaah count & Atur Petugas link */}
-                <div className="flex items-center justify-between text-[11px] pt-0.5 px-0.5">
-                  <span className="text-slate-500">
-                    Jamaah: <strong className="text-slate-800">{passengers.length} Orang</strong>
+              {/* Staff Compact Line */}
+              <div className="px-2.5 sm:px-3 py-1.5 bg-slate-50/50 flex items-center justify-between gap-1 text-[10px] sm:text-[11px] border-b border-slate-100">
+                <div className="flex items-center gap-1.5 truncate text-slate-600 min-w-0">
+                  <span className="truncate">
+                    <strong className="text-slate-400 text-[9px]">TL:</strong> {tl ? tl.name : '-'}
                   </span>
-                  <button
-                    onClick={() => handleOpenStaffModal(bus)}
-                    className="text-[10px] text-teal-deep hover:text-midnight font-bold hover:underline flex items-center gap-1"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>Petugas</span>
-                  </button>
+                  <span className="text-slate-300">•</span>
+                  <span className="truncate">
+                    <strong className="text-slate-400 text-[9px]">PB:</strong> {pembimbingList.length > 0 ? pembimbingList.map(p => p.name).join(', ') : '-'}
+                  </span>
                 </div>
+                <button
+                  onClick={() => handleOpenStaffModal(bus)}
+                  className="text-[9px] text-teal-deep hover:text-midnight font-bold hover:underline shrink-0 flex items-center gap-0.5"
+                  title="Atur Petugas Bus"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>Petugas</span>
+                </button>
               </div>
 
               {/* Action Buttons Compact */}
-              <div className="p-2.5 px-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-1.5">
+              <div className="p-1.5 sm:p-2 px-2.5 sm:px-3 bg-white flex items-center justify-between gap-1">
                 <button
                   onClick={() => onNavigateToSeats(bus.id)}
-                  className="flex-1 py-1.5 px-2 bg-midnight hover:bg-midnight-700 text-white font-bold text-[11px] rounded-lg flex items-center justify-center gap-1 transition shadow-sm"
+                  className="flex-1 py-1 sm:py-1.5 px-2 bg-midnight hover:bg-midnight-700 text-white font-bold text-[10px] sm:text-[11px] rounded-lg flex items-center justify-center gap-1 transition shadow-xs"
                 >
                   <Settings2 className="w-3 h-3" />
                   <span>Denah Kursi</span>
@@ -287,7 +261,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
 
                 <button
                   onClick={() => exportBusManifestToExcel(bus, passengers, staff)}
-                  className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 bg-white rounded-lg transition"
+                  className="p-1 sm:p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 bg-slate-50 rounded-lg transition"
                   title="Unduh Manifest Penumpang (Excel)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -295,7 +269,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
 
                 <button
                   onClick={() => handleOpenEditBus(bus)}
-                  className="p-1.5 text-slate-500 hover:text-midnight hover:bg-slate-200 border border-slate-200 bg-white rounded-lg transition"
+                  className="p-1 sm:p-1.5 text-slate-500 hover:text-midnight hover:bg-slate-200 border border-slate-200 bg-slate-50 rounded-lg transition"
                   title="Edit Info Bus"
                 >
                   <Edit className="w-3.5 h-3.5" />
@@ -303,7 +277,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
 
                 <button
                   onClick={() => setDeletingBusId(bus.id)}
-                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 bg-white rounded-lg transition"
+                  className="p-1 sm:p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 bg-slate-50 rounded-lg transition"
                   title="Hapus Bus"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -313,6 +287,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
           );
         })}
       </div>
+
 
       {/* ========================================================================= */}
       {/* MODAL: Tambah / Edit Bus                                                  */}
