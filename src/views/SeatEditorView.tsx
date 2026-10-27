@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { useApp } from '../context/AppContext';
 import { Bus, BusSeat, Jamaah, SeatRole } from '../types';
 import { exportBusSeatChartPDF, exportBusVisualChartPDF } from '../utils/pdf';
@@ -18,7 +19,10 @@ import {
   Upload,
   Download,
   FileSpreadsheet,
-  UserPlus
+  UserPlus,
+  Copy,
+  Check,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface SeatEditorViewProps {
@@ -65,6 +69,11 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importedSeatsPreview, setImportedSeatsPreview] = useState<{ seatNumber: string; occupantName: string }[]>([]);
   const [isImportingSeats, setIsImportingSeats] = useState(false);
+
+  // Canvas Ref & Image Copy State
+  const chartCanvasRef = useRef<HTMLDivElement>(null);
+  const [isCopyingImage, setIsCopyingImage] = useState(false);
+  const [hasCopiedImage, setHasCopiedImage] = useState(false);
   
   // Row & Column Configuration Modal State
   const [isDimensionModalOpen, setIsDimensionModalOpen] = useState(false);
@@ -313,6 +322,57 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     await standardizeBusTo59Seats(selectedBus.id);
   };
 
+  // Salin Gambar Denah Bus untuk WhatsApp Rombongan
+  const handleCopyChartImage = async () => {
+    if (!chartCanvasRef.current) return;
+    setIsCopyingImage(true);
+    try {
+      const canvas = await html2canvas(chartCanvasRef.current, {
+        scale: 2, // High resolution for clear WhatsApp text readability
+        useCORS: true,
+        backgroundColor: '#ffffff'
+      });
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          showToast('Gagal memproses gambar denah.', 'error');
+          setIsCopyingImage(false);
+          return;
+        }
+
+        let copied = false;
+        if (navigator.clipboard && typeof (window as any).ClipboardItem !== 'undefined') {
+          try {
+            const item = new (window as any).ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([item]);
+            copied = true;
+            setHasCopiedImage(true);
+            setTimeout(() => setHasCopiedImage(false), 3500);
+            showToast(`Gambar denah ${selectedBus?.name || 'Bus'} berhasil disalin! Silakan Paste (Ctrl+V) langsung ke chat / grup WhatsApp rombongan.`, 'success');
+          } catch (clipErr) {
+            console.warn('Clipboard write API blocked, falling back to download...', clipErr);
+          }
+        }
+
+        // If clipboard wasn't available or was blocked, download PNG image directly
+        if (!copied) {
+          const link = document.createElement('a');
+          link.download = `Denah_${(selectedBus?.name || 'Bus').replace(/\s+/g, '_')}_59_Kursi.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          setHasCopiedImage(true);
+          setTimeout(() => setHasCopiedImage(false), 3500);
+          showToast(`Gambar denah ${selectedBus?.name || 'Bus'} berhasil diunduh sebagai PNG untuk dibagikan ke rombongan.`, 'info');
+        }
+
+        setIsCopyingImage(false);
+      }, 'image/png');
+    } catch (err: any) {
+      showToast(`Gagal menyalin gambar denah: ${err?.message || err}`, 'error');
+      setIsCopyingImage(false);
+    }
+  };
+
   // Helper to render one seat in official 59 view
   const renderOfficialSeatBox = (num: number, className: string = '') => {
     const seat = getSeatByNumber(num);
@@ -322,11 +382,11 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
       <div
         key={num}
         onClick={() => handleSeatClick(seat)}
-        className={`border border-slate-700 bg-white rounded-xs overflow-hidden cursor-pointer hover:border-teal-600 transition shadow-xs group select-none flex flex-col justify-between ${className}`}
+        className={`border border-slate-700 bg-white rounded-xs overflow-hidden cursor-pointer hover:border-midnight-500 transition shadow-xs group select-none flex flex-col justify-between ${className}`}
         title={`Seat ${num}: ${occupant || 'Kosong'} (Klik untuk kelola)`}
       >
-        {/* Top Gray Header: SEAT X */}
-        <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 px-1 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider">
+        {/* Top Header: SEAT X (Theme Midnight/Blue Soft Tint) */}
+        <div className="bg-[#E1EBF5] border-b border-slate-700 py-0.5 px-1 text-center font-bold text-[9px] sm:text-[10px] text-midnight-900 tracking-wider">
           SEAT {num}
         </div>
 
@@ -337,7 +397,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
               {occupant}
             </span>
           ) : (
-            <span className="text-[10px] text-slate-300 font-semibold group-hover:text-teal-600 transition">
+            <span className="text-[10px] text-slate-300 font-semibold group-hover:text-midnight transition">
               -
             </span>
           )}
@@ -368,7 +428,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             width: 100% !important;
             max-width: 100% !important;
             box-shadow: none !important;
-            border: 2px solid #A3C493 !important;
+            border: 2px solid #142B4A !important;
             padding: 5mm 6mm !important;
             margin: 0 !important;
             page-break-inside: avoid !important;
@@ -459,10 +519,27 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <span>Cetak A4</span>
           </button>
 
+          {/* Salin Gambar Denah (WA) */}
+          <button
+            onClick={handleCopyChartImage}
+            disabled={isCopyingImage}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md disabled:opacity-50"
+            title="Salin gambar denah bus ini ke clipboard untuk langsung di-paste ke grup WhatsApp rombongan"
+          >
+            {isCopyingImage ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : hasCopiedImage ? (
+              <Check className="w-4 h-4 text-emerald-300" />
+            ) : (
+              <Copy className="w-4 h-4 text-blue-200" />
+            )}
+            <span>{hasCopiedImage ? 'Tersalin!' : 'Salin Gambar (WA)'}</span>
+          </button>
+
           {/* Export PDF Button */}
           <button
             onClick={handleExportVisualPDF}
-            className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
             title="Download PDF Denah Visual A4 persis seperti gambar"
           >
             <FileDown className="w-4 h-4 text-teal-soft" />
@@ -532,9 +609,12 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
       {/* ========================================================================= */}
       {viewMode === 'official_59' && (
         <div className="w-full overflow-x-auto pb-4 -mx-1 px-1">
-          <div className="print-a4-canvas min-w-[560px] sm:min-w-[620px] max-w-3xl mx-auto bg-white border-2 border-[#A3C493] rounded-3xl p-3.5 sm:p-7 shadow-xl space-y-3 sm:space-y-4">
-            {/* Top Green Banner */}
-            <div className="bg-[#4F7336] text-white font-extrabold text-lg sm:text-xl py-2.5 rounded-lg text-center tracking-widest uppercase shadow-xs">
+          <div 
+            ref={chartCanvasRef}
+            className="print-a4-canvas min-w-[560px] sm:min-w-[620px] max-w-3xl mx-auto bg-white border-2 border-midnight rounded-3xl p-3.5 sm:p-7 shadow-xl space-y-3 sm:space-y-4"
+          >
+            {/* Top Blue Banner (Matching App Midnight Theme) */}
+            <div className="bg-[#142B4A] text-white font-extrabold text-lg sm:text-xl py-2.5 rounded-lg text-center tracking-widest uppercase shadow-sm border border-midnight-700">
               {selectedBus?.name.toUpperCase().startsWith('BUS')
                 ? selectedBus.name.toUpperCase()
                 : `BUS ${selectedBus?.name.toUpperCase()}`}
@@ -544,7 +624,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <div className="grid grid-cols-12 gap-2 sm:gap-3 items-stretch">
               {/* Pintu Masuk / Helper */}
               <div className="col-span-3 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
-                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                <div className="bg-[#E1EBF5] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-midnight-900 tracking-wider uppercase">
                   PINTU MASUK
                 </div>
                 <div className="p-1 min-h-[36px] sm:min-h-[42px] flex items-center justify-center font-extrabold text-slate-800 text-[10px] sm:text-xs">
@@ -557,7 +637,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
 
               {/* Tour Leader */}
               <div className="col-span-4 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
-                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                <div className="bg-[#E1EBF5] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-midnight-900 tracking-wider uppercase">
                   TOUR LEADER
                 </div>
                 <div className="p-1 min-h-[36px] sm:min-h-[42px] flex items-center justify-center text-center font-extrabold text-slate-900 text-[10px] sm:text-xs leading-tight uppercase px-1">
@@ -572,7 +652,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
 
               {/* Sopir (Driver) */}
               <div className="col-span-3 border border-slate-700 bg-white rounded-xs overflow-hidden flex flex-col justify-between">
-                <div className="bg-[#E2E8F0] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-slate-800 tracking-wider uppercase">
+                <div className="bg-[#E1EBF5] border-b border-slate-700 py-0.5 text-center font-bold text-[9px] sm:text-[10px] text-midnight-900 tracking-wider uppercase">
                   SOPIR
                 </div>
                 <div className="p-1 min-h-[36px] sm:min-h-[42px] flex flex-col items-center justify-center">
@@ -628,7 +708,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <div className="grid grid-cols-12 gap-2 sm:gap-3 items-center">
               {/* Pintu Keluar */}
               <div className="col-span-5">
-                <div className="bg-[#4F7336] text-white font-extrabold text-[11px] sm:text-xs py-2.5 sm:py-3.5 px-2 rounded-xs text-center uppercase tracking-wider shadow-xs border border-slate-700">
+                <div className="bg-[#142B4A] text-white font-extrabold text-[11px] sm:text-xs py-2.5 sm:py-3.5 px-2 rounded-xs text-center uppercase tracking-wider shadow-xs border border-midnight-700">
                   PINTU KELUAR
                 </div>
               </div>

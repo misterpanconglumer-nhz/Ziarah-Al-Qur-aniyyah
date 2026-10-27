@@ -18,13 +18,13 @@ export function exportBusVisualChartPDF(
     format: 'a4'
   });
 
-  // Soft olive green page border
-  doc.setDrawColor(163, 196, 147); // #A3C493
+  // Midnight Navy Blue page border
+  doc.setDrawColor(20, 43, 74); // #142B4A Midnight Navy
   doc.setLineWidth(1.2);
   doc.roundedRect(6, 6, 198, 285, 2.5, 2.5, 'S');
 
-  // Header Box (Dark Olive Green #4F7336)
-  doc.setFillColor(79, 115, 54);
+  // Header Box (Midnight Navy #142B4A)
+  doc.setFillColor(20, 43, 74);
   doc.roundedRect(10, 10, 190, 12, 1.5, 1.5, 'F');
 
   // Header Title: e.g. "BUS 09" or "BUS 01"
@@ -92,10 +92,10 @@ export function exportBusVisualChartPDF(
 
     // Header strip
     const headerH = 4.2;
-    doc.setFillColor(232, 236, 240); // Light gray
+    doc.setFillColor(225, 235, 245); // Soft blue #E1EBF5
     doc.rect(x, y, w, headerH, 'FD');
 
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(20, 43, 74);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.text(`SEAT ${seatNum}`, x + w / 2, y + 3.1, { align: 'center' });
@@ -122,10 +122,10 @@ export function exportBusVisualChartPDF(
     doc.rect(x, y, w, h, 'FD');
 
     const headerH = 4.2;
-    doc.setFillColor(232, 236, 240);
+    doc.setFillColor(225, 235, 245);
     doc.rect(x, y, w, headerH, 'FD');
 
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(20, 43, 74);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.text(headerText, x + w / 2, y + 3.1, { align: 'center' });
@@ -170,7 +170,7 @@ export function exportBusVisualChartPDF(
   // Pintu Keluar
   doc.setDrawColor(30, 41, 59);
   doc.setLineWidth(0.3);
-  doc.setFillColor(79, 115, 54); // #4F7336 Green
+  doc.setFillColor(20, 43, 74); // #142B4A Midnight Navy
   doc.rect(10, yRow11, 36, seatH, 'FD');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
