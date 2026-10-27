@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Lock, Mail, ArrowRight, ShieldCheck, Database, Smartphone } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Database, Smartphone, Eye, EyeOff } from 'lucide-react';
 
 interface AuthViewProps {
   onOpenInstallModal: () => void;
@@ -11,6 +11,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onOpenInstallModal, onOpenDb
   const { loginAdmin, isOnlineDb } = useApp();
   const [email, setEmail] = useState('bendahara@ziarah2027.id');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -122,13 +123,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onOpenInstallModal, onOpenDb
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
                   placeholder="Masukkan kata sandi..."
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 focus:border-teal-deep transition"
+                  className="w-full pl-10 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 focus:border-teal-deep transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

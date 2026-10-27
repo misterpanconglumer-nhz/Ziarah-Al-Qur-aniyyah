@@ -228,29 +228,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth handling
   const loginAdmin = async (passOrToken: string, email: string = 'bendahara@ziarah2027.id') => {
-    // If Supabase Auth is enabled
-    if (isOnlineDb && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: passOrToken
-      });
-      if (error) {
-        return { success: false, message: error.message };
+    const inputPass = passOrToken.trim();
+    const storedPass = localStorage.getItem('ziarah_admin_custom_password');
+    let dbPass: string | null = null;
+    try {
+      if (settings?.notes && typeof settings.notes === 'string' && settings.notes.startsWith('{')) {
+        const parsed = JSON.parse(settings.notes);
+        if (parsed?.admin_password) dbPass = parsed.admin_password;
       }
-      setIsAuthenticated(true);
-      setAdminEmail(data.user?.email || email);
-      localStorage.setItem('ziarah_admin_auth', 'true');
-      localStorage.setItem('ziarah_admin_email', data.user?.email || email);
-      return { success: true, message: 'Berhasil masuk ke sistem.' };
+    } catch {
+      // not JSON format
     }
 
-    // Default credential for admin in demo/setup mode
-    const storedPass = localStorage.getItem('ziarah_admin_custom_password') || 'adminziarah2027';
-    if (
-      passOrToken.trim() === storedPass ||
-      passOrToken.trim() === 'adminziarah2027' ||
-      passOrToken.trim() === 'ziarah2027'
-    ) {
+    // 1. Verify against application Admin Passwords (default or custom)
+    const isValidPass =
+      inputPass === 'adminziarah2027' ||
+      inputPass === 'ziarah2027' ||
+      (Boolean(storedPass) && inputPass === storedPass) ||
+      (Boolean(dbPass) && inputPass === dbPass);
+
+    if (isValidPass) {
       setIsAuthenticated(true);
       setAdminEmail(email || 'bendahara@ziarah2027.id');
       localStorage.setItem('ziarah_admin_auth', 'true');
@@ -258,7 +255,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, message: 'Berhasil login sebagai Pengelola/Bendahara.' };
     }
 
-    return { success: false, message: 'Kata sandi tidak valid. Silakan periksa kembali kata sandi admin Anda.' };
+    // 2. If user configured a dedicated Supabase Auth user in Supabase Dashboard
+    if (isOnlineDb && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password: passOrToken
+        });
+        if (!error && data?.user) {
+          setIsAuthenticated(true);
+          setAdminEmail(data.user.email || email);
+          localStorage.setItem('ziarah_admin_auth', 'true');
+          localStorage.setItem('ziarah_admin_email', data.user.email || email);
+          return { success: true, message: 'Berhasil masuk ke sistem.' };
+        }
+      } catch {
+        // Continue to friendly error
+      }
+    }
+
+    return {
+      success: false,
+      message: 'Kata sandi tidak valid. Silakan gunakan kata sandi admin standar (adminziarah2027).'
+    };
   };
 
   const changeAdminPassword = async (oldPass: string, newPass: string) => {
@@ -267,26 +286,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Kata sandi baru minimal 6 karakter.' };
     }
 
-    // If online with Supabase Auth
-    if (isOnlineDb && supabase) {
-      const { error } = await supabase.auth.updateUser({ password: newPass });
-      if (error) {
-        showToast(`Gagal memperbarui kata sandi di Supabase: ${error.message}`, 'error');
-        return { success: false, message: error.message };
+    const storedPass = localStorage.getItem('ziarah_admin_custom_password');
+    let dbPass: string | null = null;
+    try {
+      if (settings?.notes && typeof settings.notes === 'string' && settings.notes.startsWith('{')) {
+        const parsed = JSON.parse(settings.notes);
+        if (parsed?.admin_password) dbPass = parsed.admin_password;
       }
-      showToast('Kata sandi admin Supabase berhasil diperbarui!', 'success');
-      return { success: true, message: 'Kata sandi admin Supabase berhasil diperbarui.' };
+    } catch {
+      // not JSON format
     }
 
-    // Local / Demo mode validation
-    const storedPass = localStorage.getItem('ziarah_admin_custom_password') || 'adminziarah2027';
-    if (oldPass !== storedPass && oldPass !== 'adminziarah2027') {
+    const isOldValid =
+      oldPass.trim() === 'adminziarah2027' ||
+      oldPass.trim() === 'ziarah2027' ||
+      (Boolean(storedPass) && oldPass.trim() === storedPass) ||
+      (Boolean(dbPass) && oldPass.trim() === dbPass);
+
+    if (!isOldValid) {
       showToast('Kata sandi lama tidak sesuai!', 'error');
       return { success: false, message: 'Kata sandi lama yang Anda masukkan salah.' };
     }
 
+    // Save locally in current browser
     localStorage.setItem('ziarah_admin_custom_password', newPass);
-    showToast('Kata sandi admin berhasil diperbarui!', 'success');
+
+    // Sync to Supabase activity_settings.notes if online so all devices stay updated
+    if (isOnlineDb && supabase) {
+      try {
+        let existingNotesObj: Record<string, any> = {};
+        try {
+          if (settings?.notes && settings.notes.startsWith('{')) {
+            existingNotesObj = JSON.parse(settings.notes);
+          }
+        } catch {}
+        const updatedNotes = JSON.stringify({ ...existingNotesObj, admin_password: newPass });
+        await supabase
+          .from('activity_settings')
+          .update({ notes: updatedNotes, updated_at: new Date().toISOString() })
+          .eq('id', 'current_settings');
+        setSettings(prev => ({ ...prev, notes: updatedNotes }));
+      } catch (err) {
+        console.warn('Gagal sinkronisasi password ke Supabase:', err);
+      }
+
+      // If there's an active Supabase Auth session, update it as well
+      try {
+        await supabase.auth.updateUser({ password: newPass });
+      } catch {
+        // Ignore if no Supabase Auth session
+      }
+    }
+
+    showToast('Kata sandi Admin berhasil diperbarui!', 'success');
     return { success: true, message: 'Kata sandi admin berhasil diperbarui.' };
   };
 
