@@ -574,7 +574,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('rombongan').insert(newRomb);
+      const { bus_name, total_members, ...rombDbPayload } = newRomb;
+      const { error } = await supabase.from('rombongan').insert(rombDbPayload);
       if (error) {
         showToast(`Gagal menyimpan rombongan: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -593,7 +594,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = { ...existing, ...updates };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('rombongan').update(updated).eq('id', id);
+      const { bus_name, total_members, ...rombDbPayload } = updated;
+      const { error } = await supabase.from('rombongan').update(rombDbPayload).eq('id', id);
       if (error) {
         showToast(`Gagal update rombongan: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -637,7 +639,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('buses').insert(newBus);
+      const { staff, ...busDbPayload } = newBus;
+      const { error } = await supabase.from('buses').insert(busDbPayload);
       if (error) {
         showToast(`Gagal menambah bus: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -660,7 +663,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = { ...existing, ...updates };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('buses').update(updated).eq('id', id);
+      const { staff, ...busDbPayload } = updated;
+      const { error } = await supabase.from('buses').update(busDbPayload).eq('id', id);
       if (error) {
         showToast(`Gagal memperbarui bus: ${error.message}`, 'error');
         return { success: false, error: error.message };
