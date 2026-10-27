@@ -175,7 +175,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
               className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col justify-between"
             >
               {/* Bus Header */}
-              <div className="p-5 border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white">
+              <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white">
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-teal-deep block">
@@ -196,7 +196,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
                 </div>
 
                 {/* Capacity Counter */}
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="mt-3.5 sm:mt-4 grid grid-cols-3 gap-2 text-center">
                   <div className="p-2 bg-white rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-400 block font-semibold">Kapasitas</span>
                     <span className="font-extrabold text-midnight text-sm">{bus.capacity}</span>
@@ -213,7 +213,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
               </div>
 
               {/* Staff Section */}
-              <div className="p-5 space-y-3 flex-1">
+              <div className="p-4 sm:p-5 space-y-3 flex-1">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-teal-deep" />

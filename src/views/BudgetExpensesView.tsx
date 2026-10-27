@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { BudgetItem, ExpenseTransaction } from '../types';
 import { formatRupiah, formatDateId } from '../utils/formatters';
+import { parseBudgetExcel, downloadBudgetTemplate } from '../utils/excel';
 import { 
   PieChart, 
   Plus, 
@@ -15,7 +16,10 @@ import {
   AlertTriangle,
   X,
   TrendingDown,
-  Edit
+  Edit,
+  FileSpreadsheet,
+  Download,
+  Upload
 } from 'lucide-react';
 
 export const BudgetExpensesView: React.FC = () => {
@@ -38,6 +42,12 @@ export const BudgetExpensesView: React.FC = () => {
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [voidingExpId, setVoidingExpId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('');
+
+  // Excel Import state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importedItemsPreview, setImportedItemsPreview] = useState<Omit<BudgetItem, 'id' | 'created_at'>[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Budget Form
   const [budgetName, setBudgetName] = useState('');
@@ -83,6 +93,42 @@ export const BudgetExpensesView: React.FC = () => {
     setBudgetUnitPrice(b.unit_price);
     setBudgetNotes(b.notes || '');
     setIsAddBudgetModalOpen(true);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const items = await parseBudgetExcel(file);
+      if (items.length === 0) {
+        showToast('Tidak ada pos anggaran yang terdeteksi dari file Excel tersebut.', 'warning');
+        return;
+      }
+      setImportedItemsPreview(items);
+      setIsImportModalOpen(true);
+    } catch (err: any) {
+      showToast(`Gagal membaca Excel: ${err?.message || err}`, 'error');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (importedItemsPreview.length === 0) return;
+    setIsImporting(true);
+    try {
+      for (const item of importedItemsPreview) {
+        await addBudgetItem(item);
+      }
+      showToast(`Berhasil mengimpor ${importedItemsPreview.length} pos anggaran ke sistem!`, 'success');
+      setIsImportModalOpen(false);
+      setImportedItemsPreview([]);
+    } catch (err: any) {
+      showToast(`Terjadi kesalahan saat menyimpan: ${err.message}`, 'error');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleSubmitBudget = async (e: React.FormEvent) => {
@@ -182,15 +228,43 @@ export const BudgetExpensesView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".xlsx,.xls"
+            className="hidden"
+          />
+
           {activeSubTab === 'budget' ? (
-            <button
-              onClick={handleOpenAddBudget}
-              className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Pos Anggaran</span>
-            </button>
+            <>
+              <button
+                onClick={downloadBudgetTemplate}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition shadow-sm"
+                title="Unduh format template Excel rencana anggaran"
+              >
+                <Download className="w-4 h-4 text-slate-500" />
+                <span className="hidden sm:inline">Template Excel</span>
+              </button>
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+                title="Impor pos anggaran dari file Excel (misal: ZIARAH 2027.xlsx)"
+              >
+                <Upload className="w-4 h-4 text-emerald-100" />
+                <span>Import Excel</span>
+              </button>
+
+              <button
+                onClick={handleOpenAddBudget}
+                className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Pos</span>
+              </button>
+            </>
           ) : (
             <button
               onClick={() => handleOpenAddExpense()}
@@ -204,33 +278,33 @@ export const BudgetExpensesView: React.FC = () => {
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 block">Total Rencana Anggaran</span>
-          <div className="text-xl font-extrabold text-midnight mt-1">{formatRupiah(totalBudget)}</div>
-          <span className="text-[11px] text-slate-400 mt-1 block">{budgetList.length} Pos Alokasi</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Total Rencana Anggaran</span>
+          <div className="text-base sm:text-xl font-extrabold text-midnight mt-0.5 sm:mt-1 truncate">{formatRupiah(totalBudget)}</div>
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block">{budgetList.length} Pos Alokasi</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 block">Realisasi Pengeluaran Kas</span>
-          <div className="text-xl font-extrabold text-rose-700 mt-1">{formatRupiah(totalRealizedExpenses)}</div>
-          <span className="text-[11px] text-slate-400 mt-1 block">{validExpenses.length} Transaksi Keluar</span>
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Realisasi Pengeluaran</span>
+          <div className="text-base sm:text-xl font-extrabold text-rose-700 mt-0.5 sm:mt-1 truncate">{formatRupiah(totalRealizedExpenses)}</div>
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block">{validExpenses.length} Transaksi Keluar</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 block">Sisa Alokasi Anggaran</span>
-          <div className={`text-xl font-extrabold mt-1 ${totalVariance >= 0 ? 'text-teal-deep' : 'text-rose-600'}`}>
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Sisa Alokasi</span>
+          <div className={`text-base sm:text-xl font-extrabold mt-0.5 sm:mt-1 truncate ${totalVariance >= 0 ? 'text-teal-deep' : 'text-rose-600'}`}>
             {formatRupiah(totalVariance)}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">
-            {totalVariance >= 0 ? 'Anggaran Masih Aman' : 'Melebihi Anggaran'}
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block truncate">
+            {totalVariance >= 0 ? 'Anggaran Aman' : 'Melebihi Anggaran'}
           </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 block">Persentase Penyerapan</span>
-          <div className="text-xl font-extrabold text-teal-deep mt-1">{absorptionRate}%</div>
-          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Penyerapan Dana</span>
+          <div className="text-base sm:text-xl font-extrabold text-teal-deep mt-0.5 sm:mt-1">{absorptionRate}%</div>
+          <div className="w-full bg-slate-100 h-1.5 sm:h-2 rounded-full overflow-hidden mt-1.5 sm:mt-2">
             <div 
               className={`h-full ${absorptionRate > 100 ? 'bg-rose-500' : 'bg-teal-deep'}`}
               style={{ width: `${Math.min(100, absorptionRate)}%` }}
@@ -755,6 +829,125 @@ export const BudgetExpensesView: React.FC = () => {
                 className="flex-1 py-2 text-xs font-bold text-white bg-rose-600 rounded-xl hover:bg-rose-700"
               >
                 Konfirmasi VOID
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: Preview Import Anggaran Excel                                      */}
+      {/* ========================================================================= */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-midnight text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="font-bold text-sm">Pratinjau Impor Anggaran Excel</h3>
+                  <p className="text-[11px] text-teal-soft">
+                    {importedItemsPreview.length} Pos Anggaran terdeteksi dari file
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!isImporting) {
+                    setIsImportModalOpen(false);
+                    setImportedItemsPreview([]);
+                  }
+                }}
+                className="p-1 text-slate-300 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Summary Bar */}
+            <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+              <div className="text-xs text-emerald-900">
+                <span className="font-bold">Total Rencana Anggaran Baru: </span>
+                <span className="font-extrabold text-sm text-emerald-800">
+                  {formatRupiah(importedItemsPreview.reduce((sum, item) => sum + (item.total_budget || 0), 0))}
+                </span>
+              </div>
+              <span className="text-[11px] text-emerald-700 font-medium">
+                Format file ZIARAH 2027.xlsx & standar didukung penuh
+              </span>
+            </div>
+
+            {/* Table of Items */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                    <th className="py-2 px-3">No</th>
+                    <th className="py-2 px-3">Nama Pos Anggaran</th>
+                    <th className="py-2 px-3">Kategori</th>
+                    <th className="py-2 px-3 text-center">Vol & Satuan</th>
+                    <th className="py-2 px-3 text-right">Harga Satuan</th>
+                    <th className="py-2 px-3 text-right">Total Anggaran</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {importedItemsPreview.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/60">
+                      <td className="py-2 px-3 text-slate-400 font-semibold">{idx + 1}</td>
+                      <td className="py-2 px-3">
+                        <span className="font-bold text-slate-900 block">{item.name}</span>
+                        {item.notes && <span className="text-[10px] text-slate-400 block">{item.notes}</span>}
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full">
+                          {item.category}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-center text-slate-600">
+                        {item.volume} {item.unit}
+                      </td>
+                      <td className="py-2 px-3 text-right text-slate-600">
+                        {formatRupiah(item.unit_price)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-extrabold text-midnight">
+                        {formatRupiah(item.total_budget)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={isImporting}
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportedItemsPreview([]);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isImporting}
+                onClick={handleConfirmImport}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl transition shadow-md"
+              >
+                {isImporting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Terapkan & Simpan ke Sistem</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

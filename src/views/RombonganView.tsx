@@ -163,7 +163,7 @@ export const RombonganView: React.FC = () => {
           return (
             <div 
               key={r.id} 
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between space-y-4"
+              className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 sm:p-5 flex flex-col justify-between space-y-3 sm:space-y-4"
             >
               <div>
                 <div className="flex items-start justify-between gap-2">

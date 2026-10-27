@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Jamaah, PaymentTransaction, Rombongan, Bus } from '../types';
+import { Jamaah, PaymentTransaction, Rombongan, Bus, BudgetItem } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
 
 export interface ImportParsedRow {
@@ -280,4 +280,265 @@ export function exportBusManifestToExcel(bus: Bus, passengers: Jamaah[], staffLi
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, `Manifest ${bus.name}`);
   XLSX.writeFile(workbook, `Manifest_${bus.name.replace(/\s+/g, '_')}_Ziarah_2027.xlsx`);
+}
+
+/**
+ * Parse Budget Items from Excel (Supports ZIARAH 2027.xlsx category format and standard tabular format)
+ */
+export async function parseBudgetExcel(file: File): Promise<Omit<BudgetItem, 'id' | 'created_at'>[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+
+        const items: Omit<BudgetItem, 'id' | 'created_at'>[] = [];
+        let currentCategory = 'Umum';
+
+        // Check if file uses structured category blocks (like ZIARAH 2027.xlsx)
+        const isStructuredZiarahFormat = rows.some(r => 
+          r && r[1] && typeof r[1] === 'string' && (r[1].includes('MAKAN') || r[1].includes('TRANSPORTASI') || r[1].includes('DOORPRIZE'))
+        );
+
+        if (isStructuredZiarahFormat) {
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || r.length === 0) continue;
+
+            // Check if row is a Category Header
+            if (r[1] && typeof r[1] === 'string' && !r[2] && !r[3]) {
+              const cat = r[1].trim();
+              if (
+                !cat.includes('ANGGARAN') && 
+                !cat.includes('ASUMSI') && 
+                !cat.includes('Rencana') && 
+                !cat.includes('SUB TOTAL') && 
+                !cat.includes('TOTAL')
+              ) {
+                // Map category title
+                if (cat.toUpperCase().includes('MAKAN')) currentCategory = 'Konsumsi';
+                else if (cat.toUpperCase().includes('TRANSPORT')) currentCategory = 'Transportasi';
+                else if (cat.toUpperCase().includes('PELAKSANAAN') || cat.toUpperCase().includes('ZIARAH')) currentCategory = 'Retribusi & Ziarah';
+                else if (cat.toUpperCase().includes('P3K') || cat.toUpperCase().includes('KESEHATAN')) currentCategory = 'Kesehatan';
+                else if (cat.toUpperCase().includes('PERLENGKAPAN')) currentCategory = 'Perlengkapan';
+                else if (cat.toUpperCase().includes('DOORPRIZE')) currentCategory = 'Doorprize';
+                else if (cat.toUpperCase().includes('BISYAROH')) currentCategory = 'Bisyaroh & Petugas';
+                else if (cat.toUpperCase().includes('SAVING')) currentCategory = 'Dana Cadangan';
+                else currentCategory = cat;
+                continue;
+              }
+            }
+
+            const itemName = r[2] ? String(r[2]).trim() : '';
+            if (
+              itemName &&
+              itemName !== 'Jumlah Bus' &&
+              !itemName.toUpperCase().includes('SUB TOTAL') &&
+              !itemName.toUpperCase().includes('TOTAL') &&
+              !itemName.toUpperCase().includes('BIAYA PERJAMA')
+            ) {
+              const price = typeof r[3] === 'number' ? r[3] : parseFloat(String(r[3] || '0').replace(/[^0-9.]/g, '')) || 0;
+              const volume = typeof r[5] === 'number' ? r[5] : parseFloat(String(r[5] || '1').replace(/[^0-9.]/g, '')) || 1;
+              const unit = r[6] ? String(r[6]).trim() : 'Unit';
+              const total = typeof r[8] === 'number' ? r[8] : (typeof r[9] === 'number' ? r[9] : price * volume);
+
+              if (price > 0 && volume > 0) {
+                items.push({
+                  name: itemName,
+                  category: currentCategory as any,
+                  unit_price: Math.round(price),
+                  volume: volume,
+                  unit: unit,
+                  total_budget: Math.round(total)
+                });
+              }
+            }
+          }
+        } else {
+          // Standard Tabular Format: Look for headers in row 0 or 1
+          const headerRowIndex = rows.findIndex(r => 
+            r && r.some((c: any) => c && typeof c === 'string' && (c.toLowerCase().includes('nama') || c.toLowerCase().includes('pos') || c.toLowerCase().includes('anggaran')))
+          );
+
+          if (headerRowIndex !== -1) {
+            const headers = rows[headerRowIndex].map((h: any) => String(h || '').toLowerCase().trim());
+            const nameIdx = headers.findIndex(h => h.includes('nama') || h.includes('pos') || h.includes('item'));
+            const catIdx = headers.findIndex(h => h.includes('kategori') || h.includes('bidang'));
+            const volIdx = headers.findIndex(h => h.includes('vol') || h.includes('jumlah') || h.includes('qty'));
+            const unitIdx = headers.findIndex(h => h.includes('satuan') || h.includes('unit'));
+            const priceIdx = headers.findIndex(h => h.includes('harga') || h.includes('tarif') || h.includes('biaya'));
+            const totalIdx = headers.findIndex(h => h.includes('total') || h.includes('jumlah total'));
+
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+              const r = rows[i];
+              if (!r || r.length === 0) continue;
+
+              const name = nameIdx !== -1 && r[nameIdx] ? String(r[nameIdx]).trim() : '';
+              if (!name) continue;
+
+              const cat = catIdx !== -1 && r[catIdx] ? String(r[catIdx]).trim() : 'Umum';
+              const vol = volIdx !== -1 ? parseFloat(String(r[volIdx] || '1').replace(/[^0-9.]/g, '')) || 1 : 1;
+              const unit = unitIdx !== -1 && r[unitIdx] ? String(r[unitIdx]).trim() : 'Unit';
+              const price = priceIdx !== -1 ? parseFloat(String(r[priceIdx] || '0').replace(/[^0-9.]/g, '')) || 0 : 0;
+              const total = totalIdx !== -1 && r[totalIdx] ? parseFloat(String(r[totalIdx]).replace(/[^0-9.]/g, '')) || price * vol : price * vol;
+
+              items.push({
+                name,
+                category: cat as any,
+                volume: vol,
+                unit,
+                unit_price: Math.round(price),
+                total_budget: Math.round(total)
+              });
+            }
+          }
+        }
+
+        resolve(items);
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Gagal membaca file Excel'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Download Template for Budget Excel
+ */
+export function downloadBudgetTemplate() {
+  const templateData = [
+    { 'Nama Pos Anggaran': 'Sewa Bus Pariwisata Jetbus 5', 'Kategori': 'Transportasi', 'Volume': 40, 'Satuan': 'Bus', 'Harga Satuan': 4000000, 'Total': 160000000, 'Catatan': 'Termasuk driver & bbm' },
+    { 'Nama Pos Anggaran': 'Snack Pagi & Air Botol', 'Kategori': 'Konsumsi', 'Volume': 2500, 'Satuan': 'Box', 'Harga Satuan': 3500, 'Total': 8750000, 'Catatan': 'Snack box saat berangkat' },
+    { 'Nama Pos Anggaran': 'Makan Siang Jamaah', 'Kategori': 'Konsumsi', 'Volume': 2500, 'Satuan': 'Porsi', 'Harga Satuan': 12000, 'Total': 30000000, 'Catatan': 'Prasmanan / box' },
+    { 'Nama Pos Anggaran': 'Doorprize Utama Umroh', 'Kategori': 'Doorprize', 'Volume': 1, 'Satuan': 'Paket', 'Harga Satuan': 25000000, 'Total': 25000000, 'Catatan': 'Hadiah utama 1 tiket umroh' },
+    { 'Nama Pos Anggaran': 'Obat-Obatan & P3K', 'Kategori': 'Kesehatan', 'Volume': 1, 'Satuan': 'Paket', 'Harga Satuan': 1000000, 'Total': 1000000, 'Catatan': 'Persiapan medis' }
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(templateData);
+  worksheet['!cols'] = [
+    { wch: 35 }, // Nama
+    { wch: 18 }, // Kategori
+    { wch: 10 }, // Volume
+    { wch: 12 }, // Satuan
+    { wch: 16 }, // Harga
+    { wch: 18 }, // Total
+    { wch: 30 }  // Catatan
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Rencana Anggaran');
+  XLSX.writeFile(workbook, 'Template_Anggaran_Ziarah_2027.xlsx');
+}
+
+/**
+ * Parse Seat Assignments from Excel
+ */
+export async function parseSeatAssignmentsExcel(file: File): Promise<{ seatNumber: string; occupantName: string }[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+
+        const assignments: { seatNumber: string; occupantName: string }[] = [];
+
+        // Find header row with 'kursi'/'seat' and 'nama'
+        let seatCol = -1;
+        let nameCol = -1;
+        let startRow = 0;
+
+        for (let i = 0; i < Math.min(rows.length, 10); i++) {
+          const r = rows[i];
+          if (!r) continue;
+          for (let c = 0; c < r.length; c++) {
+            const val = String(r[c] || '').toLowerCase().trim();
+            if (val.includes('kursi') || val.includes('seat')) seatCol = c;
+            if (val.includes('nama') || val.includes('jamaah') || val.includes('penghuni')) nameCol = c;
+          }
+          if (seatCol !== -1 && nameCol !== -1) {
+            startRow = i + 1;
+            break;
+          }
+        }
+
+        // If no explicit header, assume Col 0 is Seat and Col 1 is Name
+        if (seatCol === -1 || nameCol === -1) {
+          seatCol = 0;
+          nameCol = 1;
+          startRow = 0;
+        }
+
+        for (let i = startRow; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || r.length === 0) continue;
+
+          let seatRaw = r[seatCol] ? String(r[seatCol]).trim() : '';
+          const nameRaw = r[nameCol] ? String(r[nameCol]).trim() : '';
+
+          if (!nameRaw || nameRaw.toUpperCase() === 'KOSONG' || nameRaw === '-') continue;
+
+          // Normalize seat number: e.g. "1" -> "SEAT 1", "SEAT 1" -> "SEAT 1"
+          const numMatch = seatRaw.match(/\d+/);
+          let seatNumber = seatRaw;
+          if (numMatch) {
+            seatNumber = `SEAT ${parseInt(numMatch[0], 10)}`;
+          } else if (seatRaw.toUpperCase().includes('TL') || seatRaw.toUpperCase().includes('TOUR')) {
+            seatNumber = 'TL';
+          } else if (seatRaw.toUpperCase().includes('PB') || seatRaw.toUpperCase().includes('PEMBIMBING')) {
+            seatNumber = 'PB';
+          }
+
+          assignments.push({
+            seatNumber,
+            occupantName: nameRaw
+          });
+        }
+
+        resolve(assignments);
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Gagal membaca file Excel denah'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Download Template for Seat Assignments Excel
+ */
+export function downloadSeatTemplate(busName: string = 'Bus') {
+  const templateData: { 'No Kursi': string; 'Nama Jamaah': string; 'Keterangan': string }[] = [];
+  
+  for (let i = 1; i <= 59; i++) {
+    templateData.push({
+      'No Kursi': `SEAT ${i}`,
+      'Nama Jamaah': '',
+      'Keterangan': ''
+    });
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(templateData);
+  worksheet['!cols'] = [
+    { wch: 14 },
+    { wch: 30 },
+    { wch: 25 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Denah 59 Kursi');
+  XLSX.writeFile(workbook, `Template_Denah_${busName.replace(/\s+/g, '_')}_59_Kursi.xlsx`);
 }

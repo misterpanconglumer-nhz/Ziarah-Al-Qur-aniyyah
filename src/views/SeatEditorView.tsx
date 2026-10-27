@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Bus, BusSeat, Jamaah, SeatRole } from '../types';
 import { exportBusSeatChartPDF, exportBusVisualChartPDF } from '../utils/pdf';
+import { parseSeatAssignmentsExcel, downloadSeatTemplate } from '../utils/excel';
 import { 
   Grid, 
   Printer, 
@@ -13,7 +14,11 @@ import {
   Sliders, 
   ChevronDown,
   CheckCircle,
-  LayoutGrid
+  LayoutGrid,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  UserPlus
 } from 'lucide-react';
 
 interface SeatEditorViewProps {
@@ -53,6 +58,13 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   // Modal / Selection State
   const [selectedSeat, setSelectedSeat] = useState<BusSeat | null>(null);
   const [occupantSearch, setOccupantSearch] = useState('');
+  const [manualNameInput, setManualNameInput] = useState('');
+
+  // Excel Seat Import State
+  const seatFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importedSeatsPreview, setImportedSeatsPreview] = useState<{ seatNumber: string; occupantName: string }[]>([]);
+  const [isImportingSeats, setIsImportingSeats] = useState(false);
   
   // Row & Column Configuration Modal State
   const [isDimensionModalOpen, setIsDimensionModalOpen] = useState(false);
@@ -160,6 +172,68 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     }
     setSelectedSeat(seat);
     setOccupantSearch('');
+    setManualNameInput(seat.occupant_name || '');
+  };
+
+  const handleAssignManualName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSeat || !selectedBus) return;
+    if (!manualNameInput.trim()) {
+      showToast('Ketik nama jamaah terlebih dahulu!', 'warning');
+      return;
+    }
+
+    const match = jamaahList.find(j => j.name.toLowerCase() === manualNameInput.trim().toLowerCase());
+    const occupantId = match ? match.id : `manual-${Date.now()}`;
+    await assignSeat(
+      selectedBus.id,
+      selectedSeat.seat_number,
+      occupantId,
+      manualNameInput.trim(),
+      'jamaah'
+    );
+    setSelectedSeat(null);
+    setManualNameInput('');
+  };
+
+  const handleSeatFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const parsed = await parseSeatAssignmentsExcel(file);
+      if (parsed.length === 0) {
+        showToast('Tidak ada penempatan kursi yang terdeteksi dari file Excel tersebut.', 'warning');
+        return;
+      }
+      setImportedSeatsPreview(parsed);
+      setIsImportModalOpen(true);
+    } catch (err: any) {
+      showToast(`Gagal membaca Excel denah: ${err?.message || err}`, 'error');
+    } finally {
+      if (seatFileInputRef.current) seatFileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmSeatImport = async () => {
+    if (!selectedBus || importedSeatsPreview.length === 0) return;
+    setIsImportingSeats(true);
+    try {
+      let count = 0;
+      for (const item of importedSeatsPreview) {
+        const match = jamaahList.find(j => j.name.toLowerCase() === item.occupantName.toLowerCase());
+        const occupantId = match ? match.id : `imp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        await assignSeat(selectedBus.id, item.seatNumber, occupantId, item.occupantName, 'jamaah');
+        count++;
+      }
+      showToast(`Berhasil menerapkan ${count} kursi dari Excel ke ${selectedBus.name}!`, 'success');
+      setIsImportModalOpen(false);
+      setImportedSeatsPreview([]);
+    } catch (err: any) {
+      showToast(`Gagal mengimpor denah kursi: ${err?.message || err}`, 'error');
+    } finally {
+      setIsImportingSeats(false);
+    }
   };
 
   const handleOpenDimensionsModal = () => {
@@ -321,6 +395,14 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="file"
+            ref={seatFileInputRef}
+            onChange={handleSeatFileChange}
+            accept=".xlsx,.xls"
+            className="hidden"
+          />
+
           {/* Bus Selector */}
           <div className="relative">
             <select
@@ -337,6 +419,26 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
+          {/* Unduh Template Denah */}
+          <button
+            onClick={() => downloadSeatTemplate(selectedBus?.name || 'Bus')}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition shadow-sm"
+            title="Unduh format template Excel denah 59 kursi"
+          >
+            <Download className="w-4 h-4 text-slate-500" />
+            <span className="hidden sm:inline">Template Excel</span>
+          </button>
+
+          {/* Impor Excel Denah */}
+          <button
+            onClick={() => seatFileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+            title="Impor susunan denah kursi dari file Excel"
+          >
+            <Upload className="w-4 h-4 text-emerald-100" />
+            <span>Import Denah</span>
+          </button>
+
           {/* Standardize 59 Seats Button */}
           <button
             onClick={handleStandardize59}
@@ -344,7 +446,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             title="Standarisasi urutan kursi ke format 59 kursi (2-3)"
           >
             <CheckCircle className="w-4 h-4 text-emerald-600" />
-            <span>Format 59 Kursi</span>
+            <span className="hidden sm:inline">Format 59</span>
           </button>
 
           {/* Print A4 Button */}
@@ -354,7 +456,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             title="Cetak langsung ke ukuran kertas A4"
           >
             <Printer className="w-4 h-4" />
-            <span>Cetak A4 (Print)</span>
+            <span>Cetak A4</span>
           </button>
 
           {/* Export PDF Button */}
@@ -364,7 +466,7 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             title="Download PDF Denah Visual A4 persis seperti gambar"
           >
             <FileDown className="w-4 h-4 text-teal-soft" />
-            <span>Export PDF Denah</span>
+            <span className="hidden sm:inline">Export PDF</span>
           </button>
 
           {/* Tabular PDF */}
@@ -429,8 +531,8 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
       {/* TAB 1: FORMAT DENAH RESMI 59 KURSI A4 (PERSIS GAMBAR TEMPLATE USER)       */}
       {/* ========================================================================= */}
       {viewMode === 'official_59' && (
-        <div className="flex justify-center">
-          <div className="print-a4-canvas w-full max-w-3xl bg-white border-2 border-[#A3C493] rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+        <div className="w-full overflow-x-auto pb-4 -mx-1 px-1">
+          <div className="print-a4-canvas min-w-[560px] sm:min-w-[620px] max-w-3xl mx-auto bg-white border-2 border-[#A3C493] rounded-3xl p-3.5 sm:p-7 shadow-xl space-y-3 sm:space-y-4">
             {/* Top Green Banner */}
             <div className="bg-[#4F7336] text-white font-extrabold text-lg sm:text-xl py-2.5 rounded-lg text-center tracking-widest uppercase shadow-xs">
               {selectedBus?.name.toUpperCase().startsWith('BUS')
@@ -687,6 +789,29 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 </div>
               )}
 
+              {/* Form Input / Ketik Nama Langsung */}
+              <form onSubmit={handleAssignManualName} className="space-y-1.5 p-3 bg-teal-50/50 border border-teal-100 rounded-xl">
+                <label className="text-[11px] font-bold text-teal-900 block">
+                  Ketik Nama Jamaah Langsung
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualNameInput}
+                    onChange={e => setManualNameInput(e.target.value)}
+                    placeholder="Ketik nama lengkap..."
+                    className="flex-1 px-3 py-2 text-xs bg-white border border-teal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-2 bg-teal-deep hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition shadow-sm shrink-0 flex items-center gap-1"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Tetapkan</span>
+                  </button>
+                </div>
+              </form>
+
               {/* Staff quick assign option */}
               <div>
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
@@ -934,6 +1059,112 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: Preview Import Denah Kursi Excel */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-midnight text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="font-bold text-sm">Pratinjau Impor Denah Kursi</h3>
+                  <p className="text-[11px] text-teal-soft">
+                    {importedSeatsPreview.length} Penempatan Kursi Terdeteksi untuk {selectedBus?.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!isImportingSeats) {
+                    setIsImportModalOpen(false);
+                    setImportedSeatsPreview([]);
+                  }
+                }}
+                className="p-1 text-slate-300 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-emerald-50 px-4 py-2.5 border-b border-emerald-100 flex items-center justify-between shrink-0 text-xs text-emerald-900">
+              <span className="font-semibold">Target Bus: {selectedBus?.name}</span>
+              <span className="font-bold text-emerald-800">{importedSeatsPreview.length} Kursi akan diisi</span>
+            </div>
+
+            {/* Table of Seats to Apply */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                    <th className="py-2 px-3">No Kursi</th>
+                    <th className="py-2 px-3">Nama Jamaah / Penumpang</th>
+                    <th className="py-2 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {importedSeatsPreview.map((item, idx) => {
+                    const match = jamaahList.find(j => j.name.toLowerCase() === item.occupantName.toLowerCase());
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="py-2 px-3 font-bold text-teal-deep">
+                          {item.seatNumber}
+                        </td>
+                        <td className="py-2 px-3 font-extrabold text-slate-900 uppercase">
+                          {item.occupantName}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          {match ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                              Terdaftar
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
+                              Baru
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={isImportingSeats}
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportedSeatsPreview([]);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isImportingSeats}
+                onClick={handleConfirmSeatImport}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl transition shadow-md"
+              >
+                {isImportingSeats ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Menerapkan...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Terapkan ke {selectedBus?.name}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

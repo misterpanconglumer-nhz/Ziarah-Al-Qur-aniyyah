@@ -178,44 +178,44 @@ export const PaymentsView: React.FC = () => {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold">Total Kas Diterima (Valid)</span>
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
-              <ArrowDownRight className="w-4 h-4" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 mb-1 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-semibold truncate">Kas Diterima (Valid)</span>
+            <div className="p-1.5 sm:p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+              <ArrowDownRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-700">{formatRupiah(totalReceived)}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Uang masuk aktual ke kas bendahara</p>
+          <div className="text-base sm:text-2xl font-extrabold text-emerald-700 truncate">{formatRupiah(totalReceived)}</div>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 truncate">Uang masuk aktual ke bendahara</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold">Jumlah Transaksi Valid</span>
-            <div className="p-2 bg-teal-50 text-teal-deep rounded-xl">
-              <CheckCircle className="w-4 h-4" />
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 mb-1 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-semibold truncate">Transaksi Valid</span>
+            <div className="p-1.5 sm:p-2 bg-teal-50 text-teal-deep rounded-xl">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-midnight">{totalTransactionsCount} Transaksi</div>
-          <p className="text-[11px] text-slate-400 mt-1">Pembayaran cicilan & pelunasan</p>
+          <div className="text-base sm:text-2xl font-extrabold text-midnight truncate">{totalTransactionsCount} Transaksi</div>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 truncate">Cicilan & pelunasan</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold">Transaksi Dibatalkan (VOID)</span>
-            <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
-              <Ban className="w-4 h-4" />
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-slate-500 mb-1 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-semibold truncate">Dibatalkan (VOID)</span>
+            <div className="p-1.5 sm:p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <Ban className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-rose-700">{voidCount} Transaksi</div>
-          <p className="text-[11px] text-slate-400 mt-1">Tersimpan dalam jejak audit pembatalan</p>
+          <div className="text-base sm:text-2xl font-extrabold text-rose-700 truncate">{voidCount} Transaksi</div>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 truncate">Jejak audit pembatalan</p>
         </div>
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-2.5">
-        <div className="relative flex-1">
+      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-2">
+        <div className="relative w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -226,27 +226,29 @@ export const PaymentsView: React.FC = () => {
           />
         </div>
 
-        <select
-          value={filterMethod}
-          onChange={e => setFilterMethod(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-        >
-          <option value="ALL">Semua Metode Pembayaran</option>
-          <option value="Tunai">Tunai</option>
-          <option value="Transfer Bank">Transfer Bank</option>
-          <option value="QRIS">QRIS</option>
-          <option value="Lainnya">Lainnya</option>
-        </select>
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            value={filterMethod}
+            onChange={e => setFilterMethod(e.target.value)}
+            className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+          >
+            <option value="ALL">Semua Metode</option>
+            <option value="Tunai">Tunai</option>
+            <option value="Transfer Bank">Transfer Bank</option>
+            <option value="QRIS">QRIS</option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
 
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-        >
-          <option value="ALL">Semua Status Transaksi</option>
-          <option value="valid">Transaksi Valid Saja</option>
-          <option value="cancelled">Dibatalkan (VOID) Saja</option>
-        </select>
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+          >
+            <option value="ALL">Semua Status</option>
+            <option value="valid">Valid Saja</option>
+            <option value="cancelled">Dibatalkan (VOID)</option>
+          </select>
+        </div>
       </div>
 
       {/* Table of Transactions */}

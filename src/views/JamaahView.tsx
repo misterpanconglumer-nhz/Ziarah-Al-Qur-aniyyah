@@ -316,10 +316,10 @@ export const JamaahView: React.FC = () => {
       </div>
 
       {/* Search and Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2.5">
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2.5">
+        <div className="flex flex-col gap-2">
           {/* Search Box */}
-          <div className="relative flex-1">
+          <div className="relative w-full">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -333,65 +333,68 @@ export const JamaahView: React.FC = () => {
             />
           </div>
 
-          {/* Filter Rombongan */}
-          <select
-            value={filterRombongan}
-            onChange={e => {
-              setFilterRombongan(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-          >
-            <option value="ALL">Semua Rombongan</option>
-            {rombonganList.map(r => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
+          {/* Filters: 2 Columns on Mobile, 4 on Desktop */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {/* Filter Rombongan */}
+            <select
+              value={filterRombongan}
+              onChange={e => {
+                setFilterRombongan(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+            >
+              <option value="ALL">Semua Rombongan</option>
+              {rombonganList.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
 
-          {/* Filter Bus */}
-          <select
-            value={filterBus}
-            onChange={e => {
-              setFilterBus(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-          >
-            <option value="ALL">Semua Bus</option>
-            <option value="UNASSIGNED">Belum Dapat Bus</option>
-            {busesList.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+            {/* Filter Bus */}
+            <select
+              value={filterBus}
+              onChange={e => {
+                setFilterBus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+            >
+              <option value="ALL">Semua Bus</option>
+              <option value="UNASSIGNED">Belum Dapat Bus</option>
+              {busesList.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
 
-          {/* Filter Status Biaya */}
-          <select
-            value={filterStatus}
-            onChange={e => {
-              setFilterStatus(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-          >
-            <option value="ALL">Semua Status Bayar</option>
-            <option value="Lunas">Lunas</option>
-            <option value="Cicilan">Cicilan</option>
-            <option value="Belum Bayar">Belum Bayar</option>
-          </select>
+            {/* Filter Status Biaya */}
+            <select
+              value={filterStatus}
+              onChange={e => {
+                setFilterStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+            >
+              <option value="ALL">Semua Status Bayar</option>
+              <option value="Lunas">Lunas</option>
+              <option value="Cicilan">Cicilan</option>
+              <option value="Belum Bayar">Belum Bayar</option>
+            </select>
 
-          {/* Filter Duplikat */}
-          <select
-            value={filterDuplicate}
-            onChange={e => {
-              setFilterDuplicate(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-          >
-            <option value="ALL">Semua Duplikasi</option>
-            <option value="NEEDS_REVIEW">Perlu Diperiksa</option>
-            <option value="DUPLICATE">Duplikat Terkonfirmasi</option>
-          </select>
+            {/* Filter Duplikat */}
+            <select
+              value={filterDuplicate}
+              onChange={e => {
+                setFilterDuplicate(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+            >
+              <option value="ALL">Semua Duplikasi</option>
+              <option value="NEEDS_REVIEW">Perlu Diperiksa</option>
+              <option value="DUPLICATE">Duplikat Terkonfirmasi</option>
+            </select>
+          </div>
         </div>
 
         {/* Filter Summary */}
