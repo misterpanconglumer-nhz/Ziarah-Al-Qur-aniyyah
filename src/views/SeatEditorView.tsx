@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useRef } from 'react';
-import html2canvas from 'html2canvas';
 import { useApp } from '../context/AppContext';
 import { Bus, BusSeat, Jamaah, SeatRole } from '../types';
 import { exportBusSeatChartPDF, exportBusVisualChartPDF } from '../utils/pdf';
 import { parseSeatAssignmentsExcel, downloadSeatTemplate } from '../utils/excel';
+import { copyBusChartImageToClipboard } from '../utils/busChartImage';
 import { 
   Grid, 
   Printer, 
@@ -322,53 +322,27 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     await standardizeBusTo59Seats(selectedBus.id);
   };
 
-  // Salin Gambar Denah Bus untuk WhatsApp Rombongan
+  // Salin Gambar Denah Bus untuk WhatsApp Rombongan (Pure Canvas 2D Rendering)
   const handleCopyChartImage = async () => {
-    if (!chartCanvasRef.current) return;
+    if (!selectedBus) return;
     setIsCopyingImage(true);
     try {
-      const canvas = await html2canvas(chartCanvasRef.current, {
-        scale: 2, // High resolution for clear WhatsApp text readability
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          showToast('Gagal memproses gambar denah.', 'error');
-          setIsCopyingImage(false);
-          return;
-        }
-
-        let copied = false;
-        if (navigator.clipboard && typeof (window as any).ClipboardItem !== 'undefined') {
-          try {
-            const item = new (window as any).ClipboardItem({ 'image/png': blob });
-            await navigator.clipboard.write([item]);
-            copied = true;
-            setHasCopiedImage(true);
-            setTimeout(() => setHasCopiedImage(false), 3500);
-            showToast(`Gambar denah ${selectedBus?.name || 'Bus'} berhasil disalin! Silakan Paste (Ctrl+V) langsung ke chat / grup WhatsApp rombongan.`, 'success');
-          } catch (clipErr) {
-            console.warn('Clipboard write API blocked, falling back to download...', clipErr);
-          }
-        }
-
-        // If clipboard wasn't available or was blocked, download PNG image directly
-        if (!copied) {
-          const link = document.createElement('a');
-          link.download = `Denah_${(selectedBus?.name || 'Bus').replace(/\s+/g, '_')}_59_Kursi.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-          setHasCopiedImage(true);
-          setTimeout(() => setHasCopiedImage(false), 3500);
-          showToast(`Gambar denah ${selectedBus?.name || 'Bus'} berhasil diunduh sebagai PNG untuk dibagikan ke rombongan.`, 'info');
-        }
-
-        setIsCopyingImage(false);
-      }, 'image/png');
+      const result = await copyBusChartImageToClipboard(
+        selectedBus,
+        seats,
+        selectedBus.staff || [],
+        rombonganList
+      );
+      if (result.success) {
+        setHasCopiedImage(true);
+        setTimeout(() => setHasCopiedImage(false), 3500);
+        showToast(result.message, result.method === 'clipboard' ? 'success' : 'info');
+      } else {
+        showToast(result.message, 'error');
+      }
     } catch (err: any) {
-      showToast(`Gagal menyalin gambar denah: ${err?.message || err}`, 'error');
+      showToast(`Gagal memproses gambar denah: ${err?.message || err}`, 'error');
+    } finally {
       setIsCopyingImage(false);
     }
   };
