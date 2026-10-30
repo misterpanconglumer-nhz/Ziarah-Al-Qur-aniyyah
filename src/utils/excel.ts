@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Jamaah, PaymentTransaction, Rombongan, Bus, BudgetItem } from '../types';
-import { formatRupiah, formatDateId } from './formatters';
+import { formatRupiah, formatDateId, parsePaymentMethodNote } from './formatters';
 
 export interface ImportParsedRow {
   rowNumber: number;
@@ -209,19 +209,24 @@ export function exportJamaahToExcel(jamaahList: Jamaah[], fileName: string = 'Da
  * Export Payment Transactions to Excel
  */
 export function exportPaymentsToExcel(payments: PaymentTransaction[], fileName: string = 'Rekap_Pembayaran_Ziarah_2027.xlsx') {
-  const exportData = payments.map((p, idx) => ({
-    'No': idx + 1,
-    'ID Transaksi': p.id,
-    'ID Jamaah': p.jamaah_id,
-    'Nama Jamaah': p.jamaah_name || '-',
-    'Tanggal Transaksi': formatDateId(p.date),
-    'Nominal (Rp)': p.amount,
-    'Metode Pembayaran': p.payment_method,
-    'Nomor Referensi': p.reference_number || '-',
-    'Status': p.status === 'valid' ? 'Valid' : 'DIBATALKAN (VOID)',
-    'Alasan Pembatalan': p.cancelled_reason || '-',
-    'Keterangan': p.notes || '-'
-  }));
+  const exportData = payments.map((p, idx) => {
+    const { channelBadge, cleanNote } = parsePaymentMethodNote(p.notes);
+    const displayMethod = channelBadge ? `${p.payment_method} (${channelBadge})` : p.payment_method;
+
+    return {
+      'No': idx + 1,
+      'ID Transaksi': p.id,
+      'ID Jamaah': p.jamaah_id,
+      'Nama Jamaah': p.jamaah_name || '-',
+      'Tanggal Transaksi': formatDateId(p.date),
+      'Nominal (Rp)': p.amount,
+      'Metode Pembayaran': displayMethod,
+      'Nomor Referensi': p.reference_number || '-',
+      'Status': p.status === 'valid' ? 'Valid' : 'DIBATALKAN (VOID)',
+      'Alasan Pembatalan': p.cancelled_reason || '-',
+      'Keterangan': cleanNote || '-'
+    };
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);
   worksheet['!cols'] = [
@@ -231,11 +236,11 @@ export function exportPaymentsToExcel(payments: PaymentTransaction[], fileName: 
     { wch: 26 }, // Nama Jamaah
     { wch: 20 }, // Tanggal
     { wch: 18 }, // Nominal
-    { wch: 18 }, // Metode
+    { wch: 30 }, // Metode + Channel
     { wch: 18 }, // Ref
     { wch: 22 }, // Status
     { wch: 25 }, // Void reason
-    { wch: 25 }  // Notes
+    { wch: 28 }  // Notes
   ];
 
   const workbook = XLSX.utils.book_new();

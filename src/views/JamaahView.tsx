@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Jamaah, DuplicateStatus } from '../types';
-import { formatRupiah, formatDateId, formatPhoneNumber } from '../utils/formatters';
+import { formatRupiah, formatDateId, formatPhoneNumber, parsePaymentMethodNote } from '../utils/formatters';
 import { exportJamaahToExcel, downloadJamaahTemplate, parseJamaahExcel, ImportParsedRow } from '../utils/excel';
 import { checkDuplicateName } from '../utils/duplicateDetection';
 import { 
@@ -24,7 +24,10 @@ import {
   X,
   Bus as BusIcon,
   HelpCircle,
-  AlertOctagon
+  AlertOctagon,
+  Wallet,
+  Building2,
+  QrCode
 } from 'lucide-react';
 
 export const JamaahView: React.FC = () => {
@@ -64,6 +67,12 @@ export const JamaahView: React.FC = () => {
   const [formRombonganId, setFormRombonganId] = useState('');
   const [formBillAmount, setFormBillAmount] = useState<number>(settings.default_bill_amount);
   const [formInitialPayment, setFormInitialPayment] = useState<number>(0);
+  const [formPayMethod, setFormPayMethod] = useState<'Tunai' | 'Transfer Bank' | 'QRIS'>('Tunai');
+  const [formCashChannel, setFormCashChannel] = useState<'bendahara' | 'koordinator' | 'loket' | 'manasik' | 'custom'>('bendahara');
+  const [formCashCollector, setFormCashCollector] = useState('');
+  const [formTransferBank, setFormTransferBank] = useState('BSI');
+  const [formAccountSender, setFormAccountSender] = useState('');
+  const [formPayRef, setFormPayRef] = useState('');
   const [formBusId, setFormBusId] = useState('');
   const [formSeatNumber, setFormSeatNumber] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -133,9 +142,17 @@ export const JamaahView: React.FC = () => {
   const resetForm = () => {
     setFormName('');
     setFormPhone('');
-    setFormRombonganId(rombonganList[0]?.id || '');
+    const firstRombId = rombonganList[0]?.id || '';
+    setFormRombonganId(firstRombId);
     setFormBillAmount(settings.default_bill_amount);
     setFormInitialPayment(0);
+    setFormPayMethod('Tunai');
+    setFormCashChannel('bendahara');
+    const firstRomb = rombonganList.find(r => r.id === firstRombId);
+    setFormCashCollector(firstRomb?.coordinator_name || '');
+    setFormTransferBank('BSI');
+    setFormAccountSender('');
+    setFormPayRef('');
     setFormBusId('');
     setFormSeatNumber('');
     setFormNotes('');
@@ -185,6 +202,28 @@ export const JamaahView: React.FC = () => {
       });
     } else {
       // Add
+      let formattedNotes = 'Pembayaran awal pendaftaran';
+      if (formInitialPayment > 0) {
+        if (formPayMethod === 'Tunai') {
+          let channelLabel = 'Langsung ke Bendahara';
+          if (formCashChannel === 'koordinator') {
+            channelLabel = `Titip Koordinator${formCashCollector ? `: ${formCashCollector}` : ''}`;
+          } else if (formCashChannel === 'loket') {
+            channelLabel = `Loket Pendaftaran${formCashCollector ? ` (${formCashCollector})` : ''}`;
+          } else if (formCashChannel === 'manasik') {
+            channelLabel = `Pertemuan/Manasik${formCashCollector ? ` (${formCashCollector})` : ''}`;
+          } else if (formCashChannel === 'custom') {
+            channelLabel = formCashCollector ? formCashCollector : 'Keterangan Khusus';
+          }
+          formattedNotes = `[Cash: ${channelLabel}] Pendaftaran awal`;
+        } else if (formPayMethod === 'Transfer Bank') {
+          const senderInfo = formAccountSender ? ` a/n ${formAccountSender}` : '';
+          formattedNotes = `[Transfer: ${formTransferBank}${senderInfo}] Pendaftaran awal`;
+        } else if (formPayMethod === 'QRIS') {
+          formattedNotes = `[QRIS: QRIS Resmi Panitia] Pendaftaran awal`;
+        }
+      }
+
       await addJamaah(
         {
           name: formName,
@@ -195,7 +234,12 @@ export const JamaahView: React.FC = () => {
           seat_number: formSeatNumber || undefined,
           notes: formNotes
         },
-        formInitialPayment
+        formInitialPayment,
+        formInitialPayment > 0 ? {
+          method: formPayMethod,
+          reference: formPayRef || undefined,
+          notes: formattedNotes
+        } : undefined
       );
     }
 
@@ -721,7 +765,14 @@ export const JamaahView: React.FC = () => {
                 </label>
                 <select
                   value={formRombonganId}
-                  onChange={e => setFormRombonganId(e.target.value)}
+                  onChange={e => {
+                    const newRombId = e.target.value;
+                    setFormRombonganId(newRombId);
+                    const romb = rombonganList.find(r => r.id === newRombId);
+                    if (romb?.coordinator_name) {
+                      setFormCashCollector(romb.coordinator_name);
+                    }
+                  }}
                   required
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
                 >
@@ -764,6 +815,146 @@ export const JamaahView: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Opsi Metode & Saluran Pembayaran Awal */}
+              {!editingJamaah && formInitialPayment > 0 && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-midnight">Detail Pembayaran Awal</span>
+                    <span className="text-[11px] text-teal-deep font-bold">
+                      {formatRupiah(formInitialPayment)}
+                    </span>
+                  </div>
+
+                  {/* Metode Tabs */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormPayMethod('Tunai')}
+                      className={`p-2 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                        formPayMethod === 'Tunai'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-800 font-bold ring-1 ring-emerald-500'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-[10px]">Tunai</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormPayMethod('Transfer Bank')}
+                      className={`p-2 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                        formPayMethod === 'Transfer Bank'
+                          ? 'bg-blue-50 border-blue-500 text-blue-800 font-bold ring-1 ring-blue-500'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[10px]">Transfer</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormPayMethod('QRIS')}
+                      className={`p-2 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                        formPayMethod === 'QRIS'
+                          ? 'bg-purple-50 border-purple-500 text-purple-800 font-bold ring-1 ring-purple-500'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-purple-600" />
+                      <span className="text-[10px]">QRIS</span>
+                    </button>
+                  </div>
+
+                  {/* Detail Tunai */}
+                  {formPayMethod === 'Tunai' && (
+                    <div className="p-2.5 bg-emerald-50/60 border border-emerald-200 rounded-lg space-y-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-emerald-900 mb-1">
+                          Keterangan Penyerahan Kas:
+                        </label>
+                        <select
+                          value={formCashChannel}
+                          onChange={e => setFormCashChannel(e.target.value as any)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none"
+                        >
+                          <option value="bendahara">Setor Langsung ke Bendahara Pusat</option>
+                          <option value="koordinator">Titip via Koordinator Rombongan</option>
+                          <option value="loket">Loket / Petugas Pendaftaran</option>
+                          <option value="manasik">Saat Pertemuan / Manasik</option>
+                          <option value="custom">Keterangan Khusus / Lainnya</option>
+                        </select>
+                      </div>
+
+                      {formCashChannel !== 'bendahara' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-900 mb-1">
+                            {formCashChannel === 'koordinator' ? 'Nama Koordinator yang Dititipkan:' : 'Nama Petugas / Keterangan:'}
+                          </label>
+                          <input
+                            type="text"
+                            value={formCashCollector}
+                            onChange={e => setFormCashCollector(e.target.value)}
+                            placeholder="Contoh: H. Sudirman / Petugas Pendaftaran"
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Detail Transfer */}
+                  {formPayMethod === 'Transfer Bank' && (
+                    <div className="p-2.5 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-900 mb-1">
+                            Bank Tujuan:
+                          </label>
+                          <select
+                            value={formTransferBank}
+                            onChange={e => setFormTransferBank(e.target.value)}
+                            className="w-full px-2 py-1.5 text-xs bg-white border border-blue-300 rounded-lg focus:outline-none"
+                          >
+                            <option value="BSI">BSI Syariah</option>
+                            <option value="BCA">BCA</option>
+                            <option value="Mandiri">Mandiri</option>
+                            <option value="BRI">BRI</option>
+                            <option value="Bank Lainnya">Lainnya</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-900 mb-1">
+                            a/n Pengirim (Opsional):
+                          </label>
+                          <input
+                            type="text"
+                            value={formAccountSender}
+                            onChange={e => setFormAccountSender(e.target.value)}
+                            placeholder="Nama pengirim"
+                            className="w-full px-2 py-1.5 text-xs bg-white border border-blue-300 rounded-lg focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      No. Kwitansi / Bukti Ref (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={formPayRef}
+                      onChange={e => setFormPayRef(e.target.value)}
+                      placeholder="Otomatis jika kosong (contoh: DP-...)"
+                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Penempatan Bus & Kursi (Opsional) */}
               <div className="grid grid-cols-2 gap-3">
@@ -1041,22 +1232,61 @@ export const JamaahView: React.FC = () => {
                 ) : (
                   paymentsList
                     .filter(p => p.jamaah_id === viewingHistoryJamaah.id)
-                    .map(p => (
-                      <div key={p.id} className="p-3 bg-white border border-slate-200 rounded-xl text-xs space-y-1">
-                        <div className="flex justify-between font-bold">
-                          <span className={p.status === 'valid' ? 'text-emerald-700' : 'text-slate-400 line-through'}>
-                            {formatRupiah(p.amount)}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">{formatDateId(p.date)}</span>
+                    .map(p => {
+                      const { channelBadge, cleanNote } = parsePaymentMethodNote(p.notes);
+                      const isCash = p.payment_method === 'Tunai';
+                      const isTransfer = p.payment_method === 'Transfer Bank';
+                      const isQris = p.payment_method === 'QRIS';
+
+                      return (
+                        <div key={p.id} className="p-3 bg-white border border-slate-200 rounded-xl text-xs space-y-1.5">
+                          <div className="flex justify-between font-bold">
+                            <span className={p.status === 'valid' ? 'text-emerald-700 font-extrabold' : 'text-slate-400 line-through'}>
+                              {formatRupiah(p.amount)}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">{formatDateId(p.date)}</span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 flex-wrap text-[11px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                isCash
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  : isTransfer
+                                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                  : isQris
+                                  ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {p.payment_method}
+                              </span>
+
+                              {channelBadge && (
+                                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium border border-slate-200">
+                                  {channelBadge}
+                                </span>
+                              )}
+
+                              {p.reference_number && (
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  ref: {p.reference_number}
+                                </span>
+                              )}
+                            </div>
+
+                            <span className={p.status === 'valid' ? 'text-emerald-600 font-bold text-[10px]' : 'text-rose-600 font-bold text-[10px]'}>
+                              {p.status === 'valid' ? 'Berhasil' : 'DIBATALKAN'}
+                            </span>
+                          </div>
+
+                          {cleanNote && (
+                            <p className="text-[11px] text-slate-600 pt-0.5 border-t border-slate-100">
+                              {cleanNote}
+                            </p>
+                          )}
                         </div>
-                        <div className="flex justify-between text-[11px] text-slate-500">
-                          <span>{p.payment_method} • {p.reference_number || '-'}</span>
-                          <span className={p.status === 'valid' ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-bold'}>
-                            {p.status === 'valid' ? 'Berhasil' : 'DIBATALKAN'}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                 )}
               </div>
             </div>

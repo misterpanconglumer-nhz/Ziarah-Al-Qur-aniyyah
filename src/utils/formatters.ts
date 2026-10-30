@@ -59,3 +59,25 @@ export function formatPhoneNumber(phone: string | undefined | null): string {
   }
   return cleaned;
 }
+
+export interface ParsedPaymentNote {
+  channelBadge?: string;
+  cleanNote: string;
+}
+
+/**
+ * Parse structured channel badge and notes from payment notes
+ * e.g. "[Cash: Titip Koordinator (H. Sudirman)] Titipan tahap 1"
+ */
+export function parsePaymentMethodNote(notes: string | undefined | null): ParsedPaymentNote {
+  if (!notes) return { cleanNote: '' };
+  const trimmed = notes.trim();
+  const match = trimmed.match(/^\[(.*?)\]\s*(.*)$/s);
+  if (match) {
+    return {
+      channelBadge: match[1],
+      cleanNote: match[2].trim()
+    };
+  }
+  return { cleanNote: trimmed };
+}

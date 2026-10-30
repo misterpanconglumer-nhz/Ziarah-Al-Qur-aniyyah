@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentTransaction, Jamaah } from '../types';
-import { formatRupiah, formatDateId } from '../utils/formatters';
+import { formatRupiah, formatDateId, parsePaymentMethodNote } from '../utils/formatters';
 import { exportPaymentsToExcel } from '../utils/excel';
 import { 
   CreditCard, 
@@ -15,13 +15,17 @@ import {
   Ban, 
   ArrowDownRight,
   Clock,
-  Check
+  Check,
+  Wallet,
+  Building2,
+  QrCode
 } from 'lucide-react';
 
 export const PaymentsView: React.FC = () => {
   const { 
     paymentsList, 
     jamaahList, 
+    rombonganList,
     addPayment, 
     voidPayment, 
     showToast 
@@ -42,6 +46,14 @@ export const PaymentsView: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState<number>(175000);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<'Tunai' | 'Transfer Bank' | 'QRIS' | 'Lainnya'>('Tunai');
+  
+  // Detailed channels & options for Cash, Bank, QRIS
+  const [cashChannel, setCashChannel] = useState<'bendahara' | 'koordinator' | 'loket' | 'manasik' | 'custom'>('bendahara');
+  const [cashCollector, setCashCollector] = useState('');
+  const [transferBank, setTransferBank] = useState('BSI');
+  const [accountSender, setAccountSender] = useState('');
+  const [qrisChannel, setQrisChannel] = useState('QRIS Resmi Panitia');
+  
   const [referenceNumber, setReferenceNumber] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
 
@@ -70,7 +82,8 @@ export const PaymentsView: React.FC = () => {
         p.id.toLowerCase().includes(q) ||
         p.jamaah_id.toLowerCase().includes(q) ||
         (p.jamaah_name && p.jamaah_name.toLowerCase().includes(q)) ||
-        (p.reference_number && p.reference_number.toLowerCase().includes(q));
+        (p.reference_number && p.reference_number.toLowerCase().includes(q)) ||
+        (p.notes && p.notes.toLowerCase().includes(q));
 
       if (!matchSearch) return false;
       if (filterMethod !== 'ALL' && p.payment_method !== filterMethod) return false;
@@ -87,11 +100,12 @@ export const PaymentsView: React.FC = () => {
   const voidCount = paymentsList.filter(p => p.status === 'cancelled').length;
 
   const handleOpenAdd = (presetJamaahId?: string) => {
+    let matchedJm: Jamaah | undefined = undefined;
     if (presetJamaahId) {
       setSelectedJamaahId(presetJamaahId);
-      const jm = jamaahList.find(j => j.id === presetJamaahId);
-      if (jm) {
-        setPaymentAmount(jm.remaining_amount > 0 ? jm.remaining_amount : jm.bill_amount);
+      matchedJm = jamaahList.find(j => j.id === presetJamaahId);
+      if (matchedJm) {
+        setPaymentAmount(matchedJm.remaining_amount > 0 ? matchedJm.remaining_amount : matchedJm.bill_amount);
       }
     } else {
       setSelectedJamaahId('');
@@ -100,6 +114,12 @@ export const PaymentsView: React.FC = () => {
     setJamaahSearch('');
     setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentMethod('Tunai');
+    setCashChannel('bendahara');
+    const romb = matchedJm ? rombonganList.find(r => r.id === matchedJm?.rombongan_id) : undefined;
+    setCashCollector(romb?.coordinator_name || '');
+    setTransferBank('BSI');
+    setAccountSender('');
+    setQrisChannel('QRIS Resmi Panitia');
     setReferenceNumber(`KWT-${String(paymentsList.length + 1).padStart(4, '0')}`);
     setPaymentNotes('');
     setIsAddPaymentModalOpen(true);
@@ -119,6 +139,27 @@ export const PaymentsView: React.FC = () => {
 
     const jm = jamaahList.find(j => j.id === selectedJamaahId);
 
+    // Build structured notes with payment channel details
+    let formattedNotes = paymentNotes.trim();
+    if (paymentMethod === 'Tunai') {
+      let channelLabel = 'Langsung ke Bendahara';
+      if (cashChannel === 'koordinator') {
+        channelLabel = `Titip Koordinator${cashCollector ? `: ${cashCollector}` : ''}`;
+      } else if (cashChannel === 'loket') {
+        channelLabel = `Loket Pendaftaran${cashCollector ? ` (${cashCollector})` : ''}`;
+      } else if (cashChannel === 'manasik') {
+        channelLabel = `Pertemuan/Manasik${cashCollector ? ` (${cashCollector})` : ''}`;
+      } else if (cashChannel === 'custom') {
+        channelLabel = cashCollector ? cashCollector : 'Keterangan Khusus';
+      }
+      formattedNotes = `[Cash: ${channelLabel}] ${paymentNotes}`.trim();
+    } else if (paymentMethod === 'Transfer Bank') {
+      const senderInfo = accountSender ? ` a/n ${accountSender}` : '';
+      formattedNotes = `[Transfer: ${transferBank}${senderInfo}] ${paymentNotes}`.trim();
+    } else if (paymentMethod === 'QRIS') {
+      formattedNotes = `[QRIS: ${qrisChannel}] ${paymentNotes}`.trim();
+    }
+
     await addPayment({
       jamaah_id: selectedJamaahId,
       jamaah_name: jm?.name,
@@ -126,7 +167,7 @@ export const PaymentsView: React.FC = () => {
       amount: Number(paymentAmount),
       payment_method: paymentMethod,
       reference_number: referenceNumber,
-      notes: paymentNotes
+      notes: formattedNotes
     });
 
     setIsAddPaymentModalOpen(false);
@@ -301,15 +342,48 @@ export const PaymentsView: React.FC = () => {
                       </td>
 
                       <td className="py-3 px-4 text-slate-600">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-800">{p.payment_method}</span>
-                          {p.reference_number && (
-                            <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono text-slate-500">
-                              {p.reference_number}
-                            </span>
-                          )}
-                        </div>
-                        {p.notes && <p className="text-[10px] text-slate-400">{p.notes}</p>}
+                        {(() => {
+                          const { channelBadge, cleanNote } = parsePaymentMethodNote(p.notes);
+                          const isCash = p.payment_method === 'Tunai';
+                          const isTransfer = p.payment_method === 'Transfer Bank';
+                          const isQris = p.payment_method === 'QRIS';
+
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  isCash
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : isTransfer
+                                    ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                    : isQris
+                                    ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {p.payment_method}
+                                </span>
+
+                                {channelBadge && (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium border border-slate-200">
+                                    {channelBadge}
+                                  </span>
+                                )}
+
+                                {p.reference_number && (
+                                  <span className="px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded text-[10px] font-mono border border-slate-200">
+                                    {p.reference_number}
+                                  </span>
+                                )}
+                              </div>
+
+                              {cleanNote && (
+                                <p className="text-[11px] text-slate-600 leading-tight">
+                                  {cleanNote}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       <td className="py-3 px-4 text-center">
@@ -398,6 +472,10 @@ export const PaymentsView: React.FC = () => {
                           onClick={() => {
                             setSelectedJamaahId(j.id);
                             setPaymentAmount(j.remaining_amount > 0 ? j.remaining_amount : j.bill_amount);
+                            const romb = rombonganList.find(r => r.id === j.rombongan_id);
+                            if (romb?.coordinator_name) {
+                              setCashCollector(romb.coordinator_name);
+                            }
                           }}
                           className="w-full p-2.5 text-left text-xs hover:bg-teal-50 flex items-center justify-between transition"
                         >
@@ -471,24 +549,227 @@ export const PaymentsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Metode & Referensi */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Metode Pembayaran
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={e => setPaymentMethod(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+              {/* Metode Pembayaran & Sub-Saluran */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-700">
+                  Metode Pembayaran *
+                </label>
+                
+                {/* Selector Tipe Utama */}
+                <div className="grid grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('Tunai')}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      paymentMethod === 'Tunai'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-800 font-bold shadow-sm ring-1 ring-emerald-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
                   >
-                    <option value="Tunai">Tunai Langsung</option>
-                    <option value="Transfer Bank">Transfer Bank</option>
-                    <option value="QRIS">QRIS Panitia</option>
-                    <option value="Lainnya">Lainnya</option>
-                  </select>
+                    <Wallet className="w-4 h-4 text-emerald-600" />
+                    <span className="text-[11px]">Tunai</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('Transfer Bank')}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      paymentMethod === 'Transfer Bank'
+                        ? 'bg-blue-50 border-blue-500 text-blue-800 font-bold shadow-sm ring-1 ring-blue-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4 text-blue-600" />
+                    <span className="text-[11px]">Transfer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('QRIS')}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      paymentMethod === 'QRIS'
+                        ? 'bg-purple-50 border-purple-500 text-purple-800 font-bold shadow-sm ring-1 ring-purple-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <QrCode className="w-4 h-4 text-purple-600" />
+                    <span className="text-[11px]">QRIS</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('Lainnya')}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      paymentMethod === 'Lainnya'
+                        ? 'bg-slate-200 border-slate-400 text-slate-800 font-bold shadow-sm ring-1 ring-slate-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4 text-slate-500" />
+                    <span className="text-[11px]">Lainnya</span>
+                  </button>
                 </div>
 
+                {/* Sub-Pilihan Khusus TUNAI */}
+                {paymentMethod === 'Tunai' && (
+                  <div className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                        Keterangan Jalur Penyerahan Tunai:
+                      </label>
+                      <select
+                        value={cashChannel}
+                        onChange={e => setCashChannel(e.target.value as any)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                      >
+                        <option value="bendahara">Setor Langsung ke Bendahara Pusat</option>
+                        <option value="koordinator">Titip via Koordinator Rombongan</option>
+                        <option value="loket">Loket / Petugas Pendaftaran</option>
+                        <option value="manasik">Saat Pertemuan / Manasik</option>
+                        <option value="custom">Keterangan Khusus / Lainnya</option>
+                      </select>
+                    </div>
+
+                    {cashChannel === 'koordinator' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-emerald-900">
+                            Nama Koordinator yang Dititipkan:
+                          </label>
+                          {currentJamaah && rombonganList.find(r => r.id === currentJamaah.rombongan_id)?.coordinator_name && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cName = rombonganList.find(r => r.id === currentJamaah.rombongan_id)?.coordinator_name;
+                                if (cName) setCashCollector(cName);
+                              }}
+                              className="text-[10px] text-emerald-700 hover:underline font-bold"
+                            >
+                              + Pakai Koordinator ({rombonganList.find(r => r.id === currentJamaah.rombongan_id)?.coordinator_name})
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={cashCollector}
+                          onChange={e => setCashCollector(e.target.value)}
+                          placeholder="Contoh: Ust. H. Abdullah / Bpk. Samsul"
+                          className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    )}
+
+                    {cashChannel === 'loket' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                          Nama Petugas Loket / Kantor:
+                        </label>
+                        <input
+                          type="text"
+                          value={cashCollector}
+                          onChange={e => setCashCollector(e.target.value)}
+                          placeholder="Contoh: Admin Siti / Meja 1"
+                          className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    )}
+
+                    {cashChannel === 'manasik' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                          Penerima Saat Manasik:
+                        </label>
+                        <input
+                          type="text"
+                          value={cashCollector}
+                          onChange={e => setCashCollector(e.target.value)}
+                          placeholder="Contoh: Diterima Panitia saat Manasik Masjid Agung"
+                          className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    )}
+
+                    {cashChannel === 'custom' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                          Keterangan / Nama Penerima:
+                        </label>
+                        <input
+                          type="text"
+                          value={cashCollector}
+                          onChange={e => setCashCollector(e.target.value)}
+                          placeholder="Tuliskan keterangan detail penerimaan..."
+                          className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-Pilihan Khusus TRANSFER BANK */}
+                {paymentMethod === 'Transfer Bank' && (
+                  <div className="p-3.5 bg-blue-50/50 border border-blue-200 rounded-xl space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-blue-900 mb-1">
+                          Bank Tujuan:
+                        </label>
+                        <select
+                          value={transferBank}
+                          onChange={e => setTransferBank(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                        >
+                          <option value="BSI">BSI (Bank Syariah Indonesia)</option>
+                          <option value="BCA">BCA (Bank Central Asia)</option>
+                          <option value="Mandiri">Bank Mandiri</option>
+                          <option value="BRI">Bank BRI</option>
+                          <option value="BNI">Bank BNI</option>
+                          <option value="Bank Jatim Syariah">Bank Jatim Syariah</option>
+                          <option value="Bank Lainnya">Bank Lainnya</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-blue-900 mb-1">
+                          Rekening Pengirim (a/n):
+                        </label>
+                        <input
+                          type="text"
+                          value={accountSender}
+                          onChange={e => setAccountSender(e.target.value)}
+                          placeholder="Nama pemilik rek pengirim..."
+                          className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Pilihan Khusus QRIS */}
+                {paymentMethod === 'QRIS' && (
+                  <div className="p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2">
+                    <label className="block text-[11px] font-bold text-purple-900 mb-1">
+                      Penyedia / Saluran QRIS:
+                    </label>
+                    <select
+                      value={qrisChannel}
+                      onChange={e => setQrisChannel(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800"
+                    >
+                      <option value="QRIS Resmi Panitia">QRIS Resmi Panitia Ziarah</option>
+                      <option value="QRIS BSI">QRIS BSI</option>
+                      <option value="GoPay">GoPay</option>
+                      <option value="OVO">OVO</option>
+                      <option value="DANA">DANA</option>
+                      <option value="ShopeePay">ShopeePay</option>
+                      <option value="Lainnya">Lainnya</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* No Referensi & Catatan */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     No. Kwitansi / Bukti Ref
@@ -501,20 +782,19 @@ export const PaymentsView: React.FC = () => {
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
                   />
                 </div>
-              </div>
 
-              {/* Catatan */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Keterangan Tambahan
-                </label>
-                <textarea
-                  value={paymentNotes}
-                  onChange={e => setPaymentNotes(e.target.value)}
-                  rows={2}
-                  placeholder="Keterangan titipan, via koordinator, dll..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
-                />
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Keterangan Tambahan
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentNotes}
+                    onChange={e => setPaymentNotes(e.target.value)}
+                    placeholder="Catatan tambahan (opsional)..."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                  />
+                </div>
               </div>
 
               <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">

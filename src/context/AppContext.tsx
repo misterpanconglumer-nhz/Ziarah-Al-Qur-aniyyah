@@ -60,7 +60,15 @@ interface AppContextType {
   busSeatsMap: Record<string, BusSeat[]>; // busId -> seats array
 
   // CRUD Jamaah
-  addJamaah: (jamaahData: Omit<Jamaah, 'id' | 'total_paid' | 'remaining_amount' | 'payment_status' | 'created_at' | 'updated_at'>, initialPayment?: number) => Promise<{ success: boolean; jamaah?: Jamaah; error?: string }>;
+  addJamaah: (
+    jamaahData: Omit<Jamaah, 'id' | 'total_paid' | 'remaining_amount' | 'payment_status' | 'created_at' | 'updated_at'>,
+    initialPayment?: number,
+    initialPaymentDetails?: {
+      method?: PaymentTransaction['payment_method'];
+      reference?: string;
+      notes?: string;
+    }
+  ) => Promise<{ success: boolean; jamaah?: Jamaah; error?: string }>;
   updateJamaah: (id: string, updates: Partial<Jamaah>) => Promise<{ success: boolean; error?: string }>;
   deleteJamaah: (id: string) => Promise<{ success: boolean; error?: string }>;
   bulkImportJamaah: (rows: any[]) => Promise<{ totalRead: number; successful: number; failed: number; duplicates: number }>;
@@ -463,7 +471,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // CRUD Jamaah
   const addJamaah = async (
     jamaahData: Omit<Jamaah, 'id' | 'total_paid' | 'remaining_amount' | 'payment_status' | 'created_at' | 'updated_at'>,
-    initialPayment: number = 0
+    initialPayment: number = 0,
+    initialPaymentDetails?: {
+      method?: PaymentTransaction['payment_method'];
+      reference?: string;
+      notes?: string;
+    }
   ) => {
     // Generate sequential ID
     const count = jamaahList.length + 1;
@@ -523,9 +536,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         jamaah_name: newJamaah.name,
         date: new Date().toISOString().split('T')[0],
         amount: paid,
-        payment_method: 'Tunai',
-        reference_number: `INIT-${newId}`,
-        notes: 'Pembayaran awal saat pendaftaran',
+        payment_method: initialPaymentDetails?.method || 'Tunai',
+        reference_number: initialPaymentDetails?.reference || `INIT-${newId}`,
+        notes: initialPaymentDetails?.notes || 'Pembayaran awal saat pendaftaran',
         status: 'valid',
         created_at: new Date().toISOString()
       };
