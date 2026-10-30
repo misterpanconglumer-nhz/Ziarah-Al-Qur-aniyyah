@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
   Jamaah,
   Rombongan,
@@ -10,7 +10,8 @@ import {
   ExpenseTransaction,
   ActivitySettings,
   DuplicateStatus,
-  DuplicateCheckResult
+  DuplicateCheckResult,
+  SeatRole
 } from '../types';
 import { supabase, isSupabaseConfigured, checkDatabaseConnection, DatabaseStatusInfo } from '../lib/supabase';
 import {
@@ -123,14 +124,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('ziarah_admin_email') || 'bendahara@ziarah2027.id';
   });
 
-  // Business entities
-  const [settings, setSettings] = useState<ActivitySettings>(DEMO_SETTINGS);
-  const [jamaahList, setJamaahList] = useState<Jamaah[]>(DEMO_JAMAAH);
-  const [rombonganList, setRombonganList] = useState<Rombongan[]>(DEMO_ROMBONGAN);
-  const [busesList, setBusesList] = useState<Bus[]>(DEMO_BUSES);
-  const [paymentsList, setPaymentsList] = useState<PaymentTransaction[]>(DEMO_PAYMENTS);
-  const [budgetList, setBudgetList] = useState<BudgetItem[]>(DEMO_BUDGET);
-  const [expensesList, setExpensesList] = useState<ExpenseTransaction[]>(DEMO_EXPENSES);
+  // LocalStorage Cache for Instant Load & Stale-While-Revalidate
+  const cachedData = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('ziarah_cache_data_v1');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  }, []);
+
+  // Business entities initialized from cache if available, otherwise DEMO
+  const [settings, setSettings] = useState<ActivitySettings>(() => cachedData?.settings || DEMO_SETTINGS);
+  const [jamaahList, setJamaahList] = useState<Jamaah[]>(() => cachedData?.jamaah || DEMO_JAMAAH);
+  const [rombonganList, setRombonganList] = useState<Rombongan[]>(() => cachedData?.rombongan || DEMO_ROMBONGAN);
+  const [busesList, setBusesList] = useState<Bus[]>(() => cachedData?.buses || DEMO_BUSES);
+  const [paymentsList, setPaymentsList] = useState<PaymentTransaction[]>(() => cachedData?.payments || DEMO_PAYMENTS);
+  const [budgetList, setBudgetList] = useState<BudgetItem[]>(() => cachedData?.budget || DEMO_BUDGET);
+  const [expensesList, setExpensesList] = useState<ExpenseTransaction[]>(() => cachedData?.expenses || DEMO_EXPENSES);
 
   // Seat layout cache
   const [busSeatsMap, setBusSeatsMap] = useState<Record<string, BusSeat[]>>(() => {
@@ -181,47 +191,133 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  // Check DB on mount
-  const refreshDbStatus = async () => {
-    const status = await checkDatabaseConnection();
-    setDbStatusInfo(status);
-    if (status.status === 'connected' && supabase) {
-      showToast('Terhubung ke database online Supabase', 'success');
-      loadSupabaseData();
-    }
-  };
-
+  // High-Speed Parallel Data Loading with Promise.all
   const loadSupabaseData = async () => {
     if (!supabase) return;
     try {
-      // 1. Settings
-      const { data: stg } = await supabase.from('activity_settings').select('*').single();
-      if (stg) setSettings(stg);
+      const [
+        stgRes,
+        busesRes,
+        rombonganRes,
+        jmRes,
+        pmRes,
+        bgRes,
+        expRes
+      ] = await Promise.all([
+        supabase.from('activity_settings').select('*').single(),
+        supabase.from('buses').select('*, staff:bus_staff_assignments(*)'),
+        supabase.from('rombongan').select('*'),
+        supabase.from('jamaah').select('*'),
+        supabase.from('payments').select('*').order('created_at', { ascending: false }),
+        supabase.from('budget_items').select('*'),
+        supabase.from('expenses').select('*').order('created_at', { ascending: false })
+      ]);
 
-      // 2. Buses & Staff
-      const { data: buses } = await supabase.from('buses').select('*, staff:bus_staff_assignments(*)');
-      if (buses) setBusesList(buses);
+      if (stgRes.data) setSettings(stgRes.data);
 
-      // 3. Rombongan
-      const { data: rombongan } = await supabase.from('rombongan').select('*');
-      if (rombongan) setRombonganList(rombongan);
+      const buses = busesRes.data || [];
+      if (busesRes.data) setBusesList(buses);
 
-      // 4. Jamaah
-      const { data: jm } = await supabase.from('jamaah').select('*');
-      if (jm) setJamaahList(jm);
+      const rombongan = rombonganRes.data || [];
+      if (rombonganRes.data) setRombonganList(rombongan);
 
-      // 5. Payments
-      const { data: pm } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
-      if (pm) setPaymentsList(pm);
+      const rawJamaah = jmRes.data || [];
+      const rombMap = new Map(rombongan.map(r => [r.id, r.name]));
+      const busMap = new Map(buses.map(b => [b.id, b.name]));
 
-      // 6. Budget & Expenses
-      const { data: bg } = await supabase.from('budget_items').select('*');
-      if (bg) setBudgetList(bg);
-      const { data: exp } = await supabase.from('expenses').select('*').order('created_at', { ascending: false });
-      if (exp) setExpensesList(exp);
-    } catch (e) {
+      const enrichedJamaah: Jamaah[] = rawJamaah.map(j => ({
+        ...j,
+        rombongan_name: rombMap.get(j.rombongan_id) || j.rombongan_name || 'Umum',
+        bus_name: j.bus_id ? (busMap.get(j.bus_id) || j.bus_name) : undefined
+      }));
+      if (jmRes.data) setJamaahList(enrichedJamaah);
+
+      const jmMap = new Map(enrichedJamaah.map(j => [j.id, j.name]));
+      const enrichedPayments: PaymentTransaction[] = (pmRes.data || []).map(p => ({
+        ...p,
+        jamaah_name: jmMap.get(p.jamaah_id) || p.jamaah_name
+      }));
+      if (pmRes.data) setPaymentsList(enrichedPayments);
+
+      if (bgRes.data) setBudgetList(bgRes.data);
+      if (expRes.data) setExpensesList(expRes.data);
+
+      // Synchronize busSeatsMap with jamaah & staff assignments
+      setBusSeatsMap(prevMap => {
+        const newMap: Record<string, BusSeat[]> = { ...prevMap };
+        buses.forEach(b => {
+          let seats = newMap[b.id];
+          if (!seats || seats.length === 0) {
+            seats = generateDefaultSeatsForBus(b.id, b.capacity || 59);
+          }
+          const busJamaah = enrichedJamaah.filter(j => j.bus_id === b.id && j.seat_number);
+
+          seats = seats.map(seat => {
+            const matchedJamaah = busJamaah.find(
+              j => j.seat_number === seat.seat_number ||
+                   j.seat_number?.replace(/^SEAT\s*/i, '') === seat.seat_number.replace(/^SEAT\s*/i, '')
+            );
+            if (matchedJamaah) {
+              return {
+                ...seat,
+                role: 'jamaah' as SeatRole,
+                occupant_id: matchedJamaah.id,
+                occupant_name: matchedJamaah.name,
+                occupant_role_label: `Jamaah (${matchedJamaah.rombongan_name || 'Umum'})`
+              };
+            }
+            if (seat.role === 'jamaah' && seat.occupant_id) {
+              const stillThere = busJamaah.some(j => j.id === seat.occupant_id);
+              if (!stillThere) {
+                return {
+                  ...seat,
+                  role: 'empty' as SeatRole,
+                  occupant_id: undefined,
+                  occupant_name: undefined,
+                  occupant_role_label: undefined
+                };
+              }
+            }
+            return seat;
+          });
+          newMap[b.id] = seats;
+        });
+        return newMap;
+      });
+
+      // Persist to local cache for instant zero-lag reload
+      try {
+        localStorage.setItem('ziarah_cache_data_v1', JSON.stringify({
+          settings: stgRes.data,
+          buses,
+          rombongan,
+          jamaah: enrichedJamaah,
+          payments: enrichedPayments,
+          budget: bgRes.data,
+          expenses: expRes.data,
+          timestamp: Date.now()
+        }));
+      } catch {}
+
+      setDbStatusInfo({
+        status: 'connected',
+        message: 'Database Supabase PostgreSQL Terhubung & Siap Operasional.',
+        url: import.meta.env.VITE_SUPABASE_URL
+      });
+    } catch (e: any) {
       console.error('Error loading Supabase data:', e);
+      setDbStatusInfo({
+        status: 'connection_error',
+        message: `Gagal memuat data Supabase: ${e?.message || e}`,
+        url: import.meta.env.VITE_SUPABASE_URL
+      });
     }
+  };
+
+  // Check DB status and load data concurrently
+  const refreshDbStatus = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    await loadSupabaseData();
   };
 
   useEffect(() => {
@@ -407,7 +503,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('jamaah').insert(newJamaah);
+      // Strip virtual joined fields before sending to Supabase
+      const { rombongan_name, bus_name, ...jamaahDbPayload } = newJamaah;
+      const { error } = await supabase.from('jamaah').insert(jamaahDbPayload);
       if (error) {
         showToast(`Gagal menyimpan jamaah ke Supabase: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -432,7 +530,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         created_at: new Date().toISOString()
       };
       if (isOnlineDb && supabase) {
-        await supabase.from('payments').insert(newTrx);
+        const { jamaah_name, ...pmDbPayload } = newTrx;
+        await supabase.from('payments').insert(pmDbPayload);
       }
       setPaymentsList(prev => [newTrx, ...prev]);
     }
@@ -467,7 +566,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('jamaah').update(updated).eq('id', id);
+      // Strip virtual joined fields before sending to Supabase
+      const { rombongan_name, bus_name, ...jamaahDbPayload } = updated;
+      const { error } = await supabase.from('jamaah').update(jamaahDbPayload).eq('id', id);
       if (error) {
         showToast(`Gagal update jamaah: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -529,6 +630,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           total_members: 0,
           created_at: new Date().toISOString()
         };
+        if (isOnlineDb && supabase) {
+          const { bus_name, total_members, ...rombDbPayload } = newRomb;
+          await supabase.from('rombongan').insert(rombDbPayload);
+        }
         rombonganList.push(newRomb);
         setRombonganList([...rombonganList]);
         romb = newRomb;
@@ -1052,7 +1157,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      const { error } = await supabase.from('payments').insert(newTrx);
+      const { jamaah_name, ...pmDbPayload } = newTrx;
+      const { error } = await supabase.from('payments').insert(pmDbPayload);
       if (error) {
         showToast(`Gagal mencatat transaksi: ${error.message}`, 'error');
         return { success: false, error: error.message };
@@ -1085,7 +1191,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (isOnlineDb && supabase) {
-      await supabase.from('payments').update(updatedTrx).eq('id', paymentId);
+      const { jamaah_name, ...pmDbPayload } = updatedTrx;
+      await supabase.from('payments').update(pmDbPayload).eq('id', paymentId);
     }
 
     // Recalculate jamaah's balance
