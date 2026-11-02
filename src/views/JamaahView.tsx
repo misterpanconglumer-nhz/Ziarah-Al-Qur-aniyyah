@@ -148,7 +148,7 @@ export const JamaahView: React.FC = () => {
     const firstRombId = rombonganList[0]?.id || '';
     setFormRombonganId(firstRombId);
     setFormBillAmount(settings.default_bill_amount);
-    setFormInitialPayment(0);
+    setFormInitialPayment(settings.default_bill_amount);
     setFormPayMethod('Tunai');
     setFormCashChannel('bendahara');
     const firstRomb = rombonganList.find(r => r.id === firstRombId);
@@ -804,17 +804,43 @@ export const JamaahView: React.FC = () => {
 
                 {!editingJamaah && (
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Pembayaran Awal (Rp)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Pembayaran Awal (Rp)
+                      </label>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setFormInitialPayment(formBillAmount)}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-bold transition ${
+                            formInitialPayment === formBillAmount
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                          }`}
+                        >
+                          Lunas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormInitialPayment(0)}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-bold transition ${
+                            formInitialPayment === 0
+                              ? 'bg-slate-600 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Belum Bayar
+                        </button>
+                      </div>
+                    </div>
                     <input
                       type="number"
                       value={formInitialPayment}
                       onChange={e => setFormInitialPayment(Number(e.target.value))}
                       min={0}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-bold text-emerald-800"
                     />
-                    <span className="text-[10px] text-slate-400">0 jika belum bayar</span>
+                    <span className="text-[10px] text-slate-400">Pilih Lunas atau 0 jika belum bayar</span>
                   </div>
                 )}
               </div>
