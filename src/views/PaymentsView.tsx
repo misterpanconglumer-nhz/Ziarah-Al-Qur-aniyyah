@@ -1,3 +1,4 @@
+import { EditPaymentModal } from '../components/EditPaymentModal';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentTransaction, Jamaah } from '../types';
@@ -12,7 +13,8 @@ import {
   CheckCircle, 
   X, 
   Filter, 
-  Ban, 
+  Ban,
+  Edit, 
   ArrowDownRight,
   Clock,
   Check,
@@ -27,6 +29,7 @@ export const PaymentsView: React.FC = () => {
     jamaahList, 
     rombonganList,
     addPayment, 
+    updatePayment,
     voidPayment, 
     showToast 
   } = useApp();
@@ -38,6 +41,7 @@ export const PaymentsView: React.FC = () => {
   // Modals state
   const [isAddPaymentModalOpen, setIsAddPaymentModalOpen] = useState(false);
   const [voidingTrxId, setVoidingTrxId] = useState<string | null>(null);
+  const [editingPayment, setEditingPayment] = useState<PaymentTransaction | null>(null);
   const [voidReason, setVoidReason] = useState('');
 
   // Form state
@@ -407,16 +411,25 @@ export const PaymentsView: React.FC = () => {
 
                       <td className="py-3 px-4 text-center">
                         {!isVoid ? (
-                          <button
-                            onClick={() => {
-                              setVoidingTrxId(p.id);
-                              setVoidReason('');
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
-                            title="Batalkan Transaksi Ini (Void)"
-                          >
-                            <Ban className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setEditingPayment(p)}
+                              className="p-1.5 text-slate-400 hover:text-teal-deep rounded-lg hover:bg-teal-50 transition"
+                              title="Ubah Metode / Keterangan Pembayaran"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setVoidingTrxId(p.id);
+                                setVoidReason('');
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                              title="Batalkan Transaksi Ini (Void)"
+                            >
+                              <Ban className="w-4 h-4" />
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-slate-300 text-xs">-</span>
                         )}

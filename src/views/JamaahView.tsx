@@ -1,6 +1,7 @@
+import { EditPaymentModal } from '../components/EditPaymentModal';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Jamaah, DuplicateStatus } from '../types';
+import { Jamaah, DuplicateStatus, PaymentTransaction } from '../types';
 import { formatRupiah, formatDateId, formatPhoneNumber, parsePaymentMethodNote } from '../utils/formatters';
 import { exportJamaahToExcel, downloadJamaahTemplate, parseJamaahExcel, ImportParsedRow } from '../utils/excel';
 import { checkDuplicateName } from '../utils/duplicateDetection';
@@ -38,7 +39,8 @@ export const JamaahView: React.FC = () => {
     settings,
     addJamaah, 
     updateJamaah, 
-    deleteJamaah, 
+    deleteJamaah,
+    updatePayment, 
     bulkImportJamaah,
     resolveDuplicateStatus,
     paymentsList,
@@ -58,6 +60,7 @@ export const JamaahView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingJamaah, setEditingJamaah] = useState<Jamaah | null>(null);
   const [viewingHistoryJamaah, setViewingHistoryJamaah] = useState<Jamaah | null>(null);
+  const [editingPayment, setEditingPayment] = useState<PaymentTransaction | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
@@ -815,6 +818,72 @@ export const JamaahView: React.FC = () => {
                   </div>
                 )}
               </div>
+
+{editingJamaah && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">Riwayat & Metode Pembayaran</span>
+                      <span className="text-[10px] text-slate-400">Total terbayar: {formatRupiah(editingJamaah.total_paid)} dari tagihan {formatRupiah(editingJamaah.bill_amount)}</span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      editingJamaah.payment_status === 'Lunas' ? 'bg-emerald-100 text-emerald-800' :
+                      editingJamaah.payment_status === 'Cicilan' ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {editingJamaah.payment_status}
+                    </span>
+                  </div>
+
+                  {paymentsList.filter(p => p.jamaah_id === editingJamaah.id).length > 0 ? (
+                    <div className="space-y-2 pt-1">
+                      {paymentsList.filter(p => p.jamaah_id === editingJamaah.id).map(p => {
+                        const { channelBadge, cleanNote } = parsePaymentMethodNote(p.notes);
+                        const isVoid = p.status === 'cancelled';
+                        return (
+                          <div key={p.id} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs gap-2 shadow-sm">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`font-bold ${isVoid ? 'line-through text-slate-400' : 'text-emerald-700'}`}>
+                                  {formatRupiah(p.amount)}
+                                </span>
+                                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold">
+                                  {p.payment_method}
+                                </span>
+                                {channelBadge && (
+                                  <span className="px-1.5 py-0.5 bg-teal-50 text-teal-800 rounded text-[10px] border border-teal-200">
+                                    {channelBadge}
+                                  </span>
+                                )}
+                                {p.reference_number && (
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    ref: {p.reference_number}
+                                  </span>
+                                )}
+                              </div>
+                              {cleanNote && <span className="text-[11px] text-slate-600 block">{cleanNote}</span>}
+                            </div>
+
+                            {!isVoid && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingPayment(p)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-teal-deep bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition shrink-0"
+                              >
+                                Ubah Metode
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-white border border-dashed border-slate-200 rounded-lg text-center">
+                      <p className="text-[11px] text-slate-400">Belum ada pembayaran tercatat.</p>
+                      <p className="text-[10px] text-teal-deep mt-0.5 font-medium">Catat pembayaran via menu Pembayaran di sidebar.</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Opsi Metode & Saluran Pembayaran Awal */}
               {!editingJamaah && formInitialPayment > 0 && (

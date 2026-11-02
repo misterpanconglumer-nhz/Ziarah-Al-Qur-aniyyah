@@ -96,6 +96,7 @@ interface AppContextType {
 
   // Payments
   addPayment: (data: Omit<PaymentTransaction, 'id' | 'status' | 'created_at'>) => Promise<{ success: boolean; error?: string }>;
+  updatePayment: (paymentId: string, data: Partial<Pick<PaymentTransaction, 'payment_method' | 'reference_number' | 'notes' | 'date' | 'amount'>>) => Promise<{ success: boolean; error?: string }>;
   voidPayment: (paymentId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
 
   // Budget & Expenses
@@ -1192,6 +1193,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const updatePayment = async (
+    paymentId: string, 
+    data: Partial<Pick<PaymentTransaction, 'payment_method' | 'reference_number' | 'notes' | 'date' | 'amount'>>
+  ) => {
+    const existing = paymentsList.find(p => p.id === paymentId);
+    if (!existing) return { success: false, error: 'Transaksi tidak ditemukan' };
+
+    // If amount changed and transaction was valid, adjust jamaah total_paid
+    if (data.amount !== undefined && data.amount !== existing.amount && existing.status === 'valid') {
+      const diff = data.amount - existing.amount;
+      const jm = jamaahList.find(j => j.id === existing.jamaah_id);
+      if (jm) {
+        await updateJamaah(jm.id, {
+          total_paid: Math.max(0, jm.total_paid + diff)
+        });
+      }
+    }
+
+    const updatedTrx: PaymentTransaction = {
+      ...existing,
+      ...data
+    };
+
+    if (isOnlineDb && supabase) {
+      const { jamaah_name, ...pmDbPayload } = updatedTrx;
+      await supabase.from('payments').update(pmDbPayload).eq('id', paymentId);
+    }
+
+    setPaymentsList(prev => prev.map(p => p.id === paymentId ? updatedTrx : p));
+    showToast('Metode / data pembayaran berhasil diperbarui!', 'success');
+    return { success: true };
+  };
+
   const voidPayment = async (paymentId: string, reason: string) => {
     const existing = paymentsList.find(p => p.id === paymentId);
     if (!existing || existing.status === 'cancelled') return { success: false, error: 'Transaksi tidak valid' };
@@ -1326,6 +1360,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBusLayoutDimensions,
         standardizeBusTo59Seats,
         addPayment,
+        updatePayment,
         voidPayment,
         addBudgetItem,
         updateBudgetItem,
