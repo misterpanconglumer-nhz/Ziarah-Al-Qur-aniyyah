@@ -128,8 +128,10 @@ export interface ActivitySettings {
   id: string;
   activity_name: string;
   activity_year: string;
-  default_bill_amount: number; // e.g. 175000
+  default_bill_amount: number; // e.g. 175000 / 185000
   target_participants: number;
+  total_buses?: number; // e.g. 40
+  seats_per_bus?: number; // e.g. 59
   notes?: string;
   updated_at: string;
 }

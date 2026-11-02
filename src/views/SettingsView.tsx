@@ -14,6 +14,9 @@ import {
   ExternalLink,
   Sliders,
   DollarSign,
+  Bus,
+  Users,
+  Sparkles,
   KeyRound,
   Lock
 } from 'lucide-react';
@@ -26,7 +29,8 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, onOpenDbModal }) => {
   const { 
     settings, 
-    updateSettings, 
+    updateSettings,
+    syncFleetAndBudget, 
     isOnlineDb, 
     dbStatusInfo, 
     refreshDbStatus,
@@ -42,6 +46,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
   const [activityYear, setActivityYear] = useState(settings.activity_year);
   const [defaultBill, setDefaultBill] = useState(settings.default_bill_amount);
   const [targetParticipants, setTargetParticipants] = useState(settings.target_participants);
+
+  // Master Auto-Sync states
+  const [totalBuses, setTotalBuses] = useState(settings.total_buses || 40);
+  const [seatsPerBus, setSeatsPerBus] = useState(settings.seats_per_bus || 59);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const calculatedTarget = totalBuses * seatsPerBus;
+  const estimatedIncome = calculatedTarget * defaultBill;
+
+  const handleSaveMasterSync = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSyncing(true);
+    try {
+      await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus));
+      setTargetParticipants(calculatedTarget);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Password change states
   const [oldPassword, setOldPassword] = useState('');
@@ -126,6 +149,129 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
         <p className="text-xs text-slate-500 mt-0.5">
           Konfigurasi nominal default per jamaah, integrasi cloud database Supabase, dan shortcut PWA.
         </p>
+      </div>
+
+      {/* Section Master: Master Konfigurasi Bus & Peserta (Auto-Sync) */}
+      <div className="bg-gradient-to-br from-white to-teal-50/40 rounded-3xl border border-teal-200/80 shadow-sm p-6 space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-teal-100">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-midnight text-teal-soft rounded-2xl shadow-sm">
+              <Bus className="w-5 h-5 text-teal-soft" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-midnight flex items-center gap-1.5">
+                <span>Master Konfigurasi Armada Bus & Total Peserta</span>
+                <span className="px-2 py-0.5 bg-teal-100 text-teal-800 text-[10px] rounded-full font-extrabold">Auto-Sync</span>
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Ubah di 1 titik ini untuk menyesuaikan seluruh armada bus, target peserta, dan pos anggaran secara otomatis
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveMasterSync} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Jumlah Armada Bus *</span>
+                <Bus className="w-3.5 h-3.5 text-teal-deep" />
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={totalBuses}
+                  onChange={e => setTotalBuses(Math.max(1, Number(e.target.value)))}
+                  min={1}
+                  max={100}
+                  required
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-extrabold text-midnight"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Bus</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">Contoh: 40 Bus pariwisata</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Kapasitas Kursi per Bus *</span>
+                <Users className="w-3.5 h-3.5 text-blue-600" />
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={seatsPerBus}
+                  onChange={e => setSeatsPerBus(Math.max(10, Number(e.target.value)))}
+                  min={10}
+                  max={80}
+                  required
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-extrabold text-midnight"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Kursi</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">Standar: 59 kursi (Jetbus 5)</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Biaya per Jamaah (Rp) *</span>
+                <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+              </label>
+              <input
+                type="number"
+                value={defaultBill}
+                onChange={e => setDefaultBill(Number(e.target.value))}
+                min={0}
+                required
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-extrabold text-emerald-700"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">Saat ini: {formatRupiah(defaultBill)}</span>
+            </div>
+          </div>
+
+          {/* Live Sync Preview */}
+          <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Total Armada</span>
+              <span className="text-base font-extrabold text-midnight">{totalBuses} Bus</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Kapasitas / Bus</span>
+              <span className="text-base font-extrabold text-teal-deep">{seatsPerBus} Kursi</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Target Total Peserta</span>
+              <span className="text-base font-extrabold text-blue-700">{calculatedTarget.toLocaleString('id-ID')} Jamaah</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Target Kas Masuk</span>
+              <span className="text-base font-extrabold text-emerald-700">{formatRupiah(estimatedIncome)}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            <p className="text-[11px] text-slate-500">
+              💡 Mengubah angka di atas akan langsung mensinkronkan armada bus di <strong>Data Bus</strong> dan pos anggaran berbasis bus (sewa bus, tol, tips sopir, parkir) di <strong>Anggaran</strong>.
+            </p>
+            <button
+              type="submit"
+              disabled={isSyncing}
+              className="w-full sm:w-auto px-5 py-2.5 bg-midnight hover:bg-midnight-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Mensinkronkan Seluruh Sistem...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-teal-soft" />
+                  <span>Terapkan & Sinkronkan Otomatis</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Section 1: Nominal Biaya & Kegiatan */}

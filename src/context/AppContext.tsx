@@ -1,3 +1,4 @@
+import { sanitizeBudgetCategory } from '../utils/excel';
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
   Jamaah,
@@ -103,6 +104,8 @@ interface AppContextType {
   addBudgetItem: (data: Omit<BudgetItem, 'id' | 'created_at'>) => Promise<void>;
   updateBudgetItem: (id: string, updates: Partial<BudgetItem>) => Promise<void>;
   deleteBudgetItem: (id: string) => Promise<void>;
+  bulkImportBudget: (items: Omit<BudgetItem, 'id' | 'created_at'>[]) => Promise<{ success: boolean; count: number; error?: string }>;
+  syncFleetAndBudget: (totalBuses: number, seatsPerBus: number) => Promise<{ success: boolean; targetParticipants: number }>;
   addExpense: (data: Omit<ExpenseTransaction, 'id' | 'status' | 'created_at'>) => Promise<void>;
   voidExpense: (expenseId: string, reason: string) => Promise<void>;
 
@@ -1290,6 +1293,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Pos anggaran berhasil dihapus.', 'info');
   };
 
+  const bulkImportBudget = async (items: Omit<BudgetItem, 'id' | 'created_at'>[]) => {
+    const timestamp = Date.now();
+    const preparedItems: BudgetItem[] = items.map((item, idx) => ({
+      id: `BDG-${String(idx + 1).padStart(3, '0')}`,
+      name: item.name,
+      category: sanitizeBudgetCategory(item.category),
+      volume: Number(item.volume) || 1,
+      unit: item.unit || 'Unit',
+      unit_price: Number(item.unit_price) || 0,
+      total_budget: Number(item.total_budget) || (Number(item.volume) * Number(item.unit_price)),
+      notes: item.notes || '',
+      created_at: new Date(timestamp + idx * 100).toISOString()
+    }));
+
+    if (isOnlineDb && supabase) {
+      try {
+        // Delete all existing budget items first to ensure clean state
+        await supabase.from('budget_items').delete().gte('id', '');
+        const { error } = await supabase.from('budget_items').insert(preparedItems);
+        if (error) {
+          console.error('Supabase bulk insert error:', error);
+          throw error;
+        }
+      } catch (err: any) {
+        console.error('Failed to save budget items to Supabase:', err);
+        showToast(`Gagal menyimpan ke database online: ${err.message}`, 'error');
+        throw err;
+      }
+    }
+
+    setBudgetList(preparedItems);
+
+    // Save to localStorage cache so refresh retains the data instantly
+    try {
+      const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
+      const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
+      cache.budget = preparedItems;
+      cache.timestamp = Date.now();
+      localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
+    } catch {}
+
+    showToast(`Berhasil menyimpan ${preparedItems.length} pos anggaran ke sistem & database online!`, 'success');
+    return { success: true, count: preparedItems.length };
+  };
+
+  const syncFleetAndBudget = async (totalBuses: number, seatsPerBus: number) => {
+    const newTarget = totalBuses * seatsPerBus;
+
+    // 1. Update settings
+    await updateSettings({
+      total_buses: totalBuses,
+      seats_per_bus: seatsPerBus,
+      target_participants: newTarget
+    });
+
+    // 2. Adjust busesList
+    let updatedBuses: Bus[] = [...busesList];
+    if (updatedBuses.length < totalBuses) {
+      // Generate missing buses
+      const toAdd = totalBuses - updatedBuses.length;
+      for (let i = 0; i < toAdd; i++) {
+        const busNum = updatedBuses.length + 1;
+        const busId = `BUS-${String(busNum).padStart(2, '0')}`;
+        const newBus: Bus = {
+          id: busId,
+          name: `Bus ${String(busNum).padStart(2, '0')}`,
+          operator: 'Blue Star',
+          bus_type: 'Executive Jetbus 5',
+          capacity: seatsPerBus,
+          status: 'active',
+          created_at: new Date().toISOString()
+        };
+        updatedBuses.push(newBus);
+        if (isOnlineDb && supabase) {
+          await supabase.from('buses').upsert(newBus);
+        }
+      }
+    } else {
+      // Update capacity on existing buses
+      updatedBuses = updatedBuses.map(b => ({ ...b, capacity: seatsPerBus }));
+      if (isOnlineDb && supabase) {
+        for (const b of updatedBuses) {
+          await supabase.from('buses').update({ capacity: seatsPerBus }).eq('id', b.id);
+        }
+      }
+    }
+    setBusesList(updatedBuses);
+
+    // 3. Adjust budget items that depend on bus count
+    let updatedCount = 0;
+    const newBudgetList = budgetList.map(b => {
+      const u = (b.unit || '').toLowerCase();
+      const n = (b.name || '').toLowerCase();
+      const isBusUnit = u.includes('bus') || n.includes('sewa bus') || n.includes('toll') || n.includes('tol') || n.includes('tips') || n.includes('parkir') || n.includes('doorprize bus') || n.includes('cetak no bus');
+
+      if (isBusUnit && b.volume !== totalBuses) {
+        updatedCount++;
+        const newTotal = totalBuses * b.unit_price;
+        return {
+          ...b,
+          volume: totalBuses,
+          total_budget: newTotal
+        };
+      }
+      return b;
+    });
+
+    if (updatedCount > 0) {
+      setBudgetList(newBudgetList);
+      if (isOnlineDb && supabase) {
+        for (const b of newBudgetList) {
+          await supabase.from('budget_items').update({
+            volume: b.volume,
+            total_budget: b.total_budget
+          }).eq('id', b.id);
+        }
+      }
+    }
+
+    showToast(`Sinkronisasi berhasil! ${totalBuses} Bus (@${seatsPerBus} kursi), target ${newTarget.toLocaleString('id-ID')} peserta, dan ${updatedCount} pos anggaran bus disesuaikan.`, 'success');
+    return { success: true, targetParticipants: newTarget };
+  };
+
   const addExpense = async (data: Omit<ExpenseTransaction, 'id' | 'status' | 'created_at'>) => {
     const id = `EXP-${String(expensesList.length + 1).padStart(4, '0')}`;
     const newExp: ExpenseTransaction = {
@@ -1365,6 +1491,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addBudgetItem,
         updateBudgetItem,
         deleteBudgetItem,
+        bulkImportBudget,
+        syncFleetAndBudget,
         addExpense,
         voidExpense,
         toasts,

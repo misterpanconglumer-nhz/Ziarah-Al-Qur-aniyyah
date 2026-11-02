@@ -29,6 +29,7 @@ export const BudgetExpensesView: React.FC = () => {
     addBudgetItem, 
     updateBudgetItem, 
     deleteBudgetItem, 
+    bulkImportBudget,
     addExpense, 
     voidExpense,
     showToast 
@@ -118,10 +119,7 @@ export const BudgetExpensesView: React.FC = () => {
     if (importedItemsPreview.length === 0) return;
     setIsImporting(true);
     try {
-      for (const item of importedItemsPreview) {
-        await addBudgetItem(item);
-      }
-      showToast(`Berhasil mengimpor ${importedItemsPreview.length} pos anggaran ke sistem!`, 'success');
+      await bulkImportBudget(importedItemsPreview);
       setIsImportModalOpen(false);
       setImportedItemsPreview([]);
     } catch (err: any) {

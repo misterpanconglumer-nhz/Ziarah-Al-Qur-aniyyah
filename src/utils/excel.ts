@@ -287,6 +287,17 @@ export function exportBusManifestToExcel(bus: Bus, passengers: Jamaah[], staffLi
   XLSX.writeFile(workbook, `Manifest_${bus.name.replace(/\s+/g, '_')}_Ziarah_2027.xlsx`);
 }
 
+export function sanitizeBudgetCategory(cat: string | undefined | null): BudgetItem['category'] {
+  const c = String(cat || '').toUpperCase().trim();
+  if (c.includes('TRANSPORT')) return 'Transportasi';
+  if (c.includes('MAKAN') || c.includes('KONSUMSI') || c.includes('SNACK') || c.includes('WATER') || c.includes('AIR')) return 'Konsumsi';
+  if (c.includes('PENGINAPAN') || c.includes('HOTEL')) return 'Penginapan';
+  if (c.includes('PELAKSANAAN') || c.includes('ZIARAH') || c.includes('RETRIBUSI') || c.includes('PARKIR') || c.includes('TOLL') || c.includes('TOL') || c.includes('PERIZINAN')) return 'Retribusi & Ziarah';
+  if (c.includes('KESEHATAN') || c.includes('OBAT') || c.includes('P3K') || c.includes('MEDIS')) return 'Kesehatan';
+  if (c.includes('PERLENGKAPAN') || c.includes('DOORPRIZE') || c.includes('UMROH') || c.includes('BANNER') || c.includes('CETAK') || c.includes('SERAGAM') || c.includes('ID CARD')) return 'Perlengkapan';
+  return 'Lain-lain';
+}
+
 /**
  * Parse Budget Items from Excel (Supports ZIARAH 2027.xlsx category format and standard tabular format)
  */
@@ -355,7 +366,7 @@ export async function parseBudgetExcel(file: File): Promise<Omit<BudgetItem, 'id
               if (price > 0 && volume > 0) {
                 items.push({
                   name: itemName,
-                  category: currentCategory as any,
+                  category: sanitizeBudgetCategory(currentCategory),
                   unit_price: Math.round(price),
                   volume: volume,
                   unit: unit,
@@ -394,7 +405,7 @@ export async function parseBudgetExcel(file: File): Promise<Omit<BudgetItem, 'id
 
               items.push({
                 name,
-                category: cat as any,
+                category: sanitizeBudgetCategory(cat),
                 volume: vol,
                 unit,
                 unit_price: Math.round(price),
