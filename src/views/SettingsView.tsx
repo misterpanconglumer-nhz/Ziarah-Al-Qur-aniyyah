@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatRupiah } from '../utils/formatters';
 import { 
@@ -52,6 +52,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
   const [seatsPerBus, setSeatsPerBus] = useState(settings.seats_per_bus || 59);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Sync internal form states with global settings when data arrives from Supabase/cache
+  useEffect(() => {
+    if (settings.activity_name) setActivityName(settings.activity_name);
+    if (settings.activity_year) setActivityYear(settings.activity_year);
+    if (settings.default_bill_amount) setDefaultBill(settings.default_bill_amount);
+    if (settings.target_participants) setTargetParticipants(settings.target_participants);
+    if (settings.total_buses) setTotalBuses(settings.total_buses);
+    if (settings.seats_per_bus) setSeatsPerBus(settings.seats_per_bus);
+  }, [settings]);
+
   const calculatedTarget = totalBuses * seatsPerBus;
   const estimatedIncome = calculatedTarget * defaultBill;
 
@@ -59,8 +69,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
     e.preventDefault();
     setIsSyncing(true);
     try {
-      await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus));
-      setTargetParticipants(calculatedTarget);
+      const res = await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus));
+      if (res?.targetParticipants) {
+        setTargetParticipants(res.targetParticipants);
+      }
+      if (Number(defaultBill) !== settings.default_bill_amount) {
+        await updateSettings({ default_bill_amount: Number(defaultBill) }, { silent: true });
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -82,7 +97,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
       activity_name: activityName,
       activity_year: activityYear,
       default_bill_amount: Number(defaultBill),
-      target_participants: Number(targetParticipants)
+      target_participants: Number(targetParticipants),
+      total_buses: Number(totalBuses),
+      seats_per_bus: Number(seatsPerBus)
     });
   };
 

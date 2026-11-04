@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS activity_settings (
   activity_year TEXT NOT NULL DEFAULT '2027',
   default_bill_amount NUMERIC NOT NULL DEFAULT 175000,
   target_participants INTEGER NOT NULL DEFAULT 3000,
+  total_buses INTEGER DEFAULT 40,
+  seats_per_bus INTEGER DEFAULT 59,
   notes TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -247,3 +249,8 @@ BEGIN
   END LOOP;
 END
 $$;
+
+
+-- Migrasi kolom otomatis untuk tabel activity_settings (jika tabel sudah ada sebelumnya)
+ALTER TABLE activity_settings ADD COLUMN IF NOT EXISTS total_buses INTEGER DEFAULT 40;
+ALTER TABLE activity_settings ADD COLUMN IF NOT EXISTS seats_per_bus INTEGER DEFAULT 59;

@@ -16,9 +16,11 @@ export const DEMO_SETTINGS: ActivitySettings = {
   id: 'current_settings',
   activity_name: "Ziarah Akbar Al-Qur'aniyyah 2027",
   activity_year: '2027',
-  default_bill_amount: 175000,
-  target_participants: 3000,
-  notes: 'Sistem operasional tunggal pengelola bendahara',
+  default_bill_amount: 185000,
+  target_participants: 2360,
+  total_buses: 40,
+  seats_per_bus: 59,
+  notes: JSON.stringify({ total_buses: 40, seats_per_bus: 59 }),
   updated_at: new Date().toISOString()
 };
 

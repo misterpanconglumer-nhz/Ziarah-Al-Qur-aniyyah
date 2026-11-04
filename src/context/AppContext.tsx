@@ -49,7 +49,7 @@ interface AppContextType {
 
   // Settings
   settings: ActivitySettings;
-  updateSettings: (newSettings: Partial<ActivitySettings>) => Promise<void>;
+  updateSettings: (newSettings: Partial<ActivitySettings>, options?: { silent?: boolean }) => Promise<void>;
 
   // Data Collections
   jamaahList: Jamaah[];
@@ -146,7 +146,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Business entities initialized from cache if available, otherwise DEMO
-  const [settings, setSettings] = useState<ActivitySettings>(() => cachedData?.settings || DEMO_SETTINGS);
+  const [settings, setSettings] = useState<ActivitySettings>(() => {
+    if (cachedData?.settings) {
+      const s = { ...cachedData.settings };
+      if (s.notes && typeof s.notes === 'string' && s.notes.startsWith('{')) {
+        try {
+          const p = JSON.parse(s.notes);
+          if (p.total_buses && !s.total_buses) s.total_buses = Number(p.total_buses);
+          if (p.seats_per_bus && !s.seats_per_bus) s.seats_per_bus = Number(p.seats_per_bus);
+        } catch {}
+      }
+      return s;
+    }
+    return DEMO_SETTINGS;
+  });
   const [jamaahList, setJamaahList] = useState<Jamaah[]>(() => cachedData?.jamaah || DEMO_JAMAAH);
   const [rombonganList, setRombonganList] = useState<Rombongan[]>(() => cachedData?.rombongan || DEMO_ROMBONGAN);
   const [busesList, setBusesList] = useState<Bus[]>(() => cachedData?.buses || DEMO_BUSES);
@@ -225,10 +238,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         supabase.from('expenses').select('*').order('created_at', { ascending: false })
       ]);
 
-      if (stgRes.data) setSettings(stgRes.data);
-
       const buses = busesRes.data || [];
       if (busesRes.data) setBusesList(buses);
+
+      let currentSettings: ActivitySettings = stgRes.data || settings;
+      if (stgRes.data) {
+        currentSettings = { ...stgRes.data };
+        if (stgRes.data.notes && typeof stgRes.data.notes === 'string' && stgRes.data.notes.startsWith('{')) {
+          try {
+            const parsedNotes = JSON.parse(stgRes.data.notes);
+            if (parsedNotes.total_buses) currentSettings.total_buses = Number(parsedNotes.total_buses);
+            if (parsedNotes.seats_per_bus) currentSettings.seats_per_bus = Number(parsedNotes.seats_per_bus);
+          } catch {}
+        }
+        if (!currentSettings.total_buses && buses.length > 0) {
+          currentSettings.total_buses = buses.length;
+        }
+        if (!currentSettings.seats_per_bus && buses.length > 0 && buses[0].capacity) {
+          currentSettings.seats_per_bus = buses[0].capacity;
+        }
+        setSettings(currentSettings);
+      }
 
       const rombongan = rombonganRes.data || [];
       if (rombonganRes.data) setRombonganList(rombongan);
@@ -300,7 +330,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Persist to local cache for instant zero-lag reload
       try {
         localStorage.setItem('ziarah_cache_data_v1', JSON.stringify({
-          settings: stgRes.data,
+          settings: currentSettings,
           buses,
           rombongan,
           jamaah: enrichedJamaah,
@@ -463,13 +493,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Settings
-  const updateSettings = async (newSettings: Partial<ActivitySettings>) => {
-    const updated = { ...settings, ...newSettings, updated_at: new Date().toISOString() };
+  const updateSettings = async (newSettings: Partial<ActivitySettings>, options?: { silent?: boolean }) => {
+    let notesObj: Record<string, any> = {};
+    try {
+      if (settings?.notes && typeof settings.notes === 'string' && settings.notes.startsWith('{')) {
+        notesObj = JSON.parse(settings.notes);
+      }
+    } catch {}
+
+    if (newSettings.total_buses !== undefined) notesObj.total_buses = Number(newSettings.total_buses);
+    if (newSettings.seats_per_bus !== undefined) notesObj.seats_per_bus = Number(newSettings.seats_per_bus);
+
+    const mergedNotes = JSON.stringify(notesObj);
+
+    const updated: ActivitySettings = { 
+      ...settings, 
+      ...newSettings, 
+      notes: mergedNotes,
+      updated_at: new Date().toISOString() 
+    };
+
     setSettings(updated);
+
+    // Save to local cache
+    try {
+      const cacheStr = localStorage.getItem('ziarah_cache_data_v1');
+      if (cacheStr) {
+        const c = JSON.parse(cacheStr);
+        c.settings = updated;
+        localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(c));
+      }
+    } catch {}
+
     if (isOnlineDb && supabase) {
-      await supabase.from('activity_settings').upsert(updated);
+      const dbPayload = {
+        id: 'current_settings',
+        activity_name: updated.activity_name || "Ziarah Akbar Al-Qur'aniyyah 2027",
+        activity_year: updated.activity_year || "2027",
+        default_bill_amount: Number(updated.default_bill_amount) || 185000,
+        target_participants: Number(updated.target_participants) || 1225,
+        notes: mergedNotes,
+        updated_at: updated.updated_at
+      };
+
+      const { error } = await supabase.from('activity_settings').upsert(dbPayload);
+      if (error) {
+        console.error('Error updating activity_settings in Supabase:', error);
+      }
     }
-    showToast('Pengaturan kegiatan berhasil disimpan.', 'success');
+
+    if (!options?.silent) {
+      showToast('Pengaturan kegiatan berhasil disimpan.', 'success');
+    }
   };
 
   // CRUD Jamaah
@@ -1341,18 +1416,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncFleetAndBudget = async (totalBuses: number, seatsPerBus: number) => {
     const newTarget = totalBuses * seatsPerBus;
 
-    // 1. Update settings
+    // 1. Update settings (silent toast)
     await updateSettings({
       total_buses: totalBuses,
       seats_per_bus: seatsPerBus,
       target_participants: newTarget
-    });
+    }, { silent: true });
 
     // 2. Adjust busesList
     let updatedBuses: Bus[] = [...busesList];
     if (updatedBuses.length < totalBuses) {
-      // Generate missing buses
+      // Need to add missing buses
       const toAdd = totalBuses - updatedBuses.length;
+      const newBusesToInsert: Bus[] = [];
       for (let i = 0; i < toAdd; i++) {
         const busNum = updatedBuses.length + 1;
         const busId = `BUS-${String(busNum).padStart(2, '0')}`;
@@ -1366,23 +1442,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           created_at: new Date().toISOString()
         };
         updatedBuses.push(newBus);
-        if (isOnlineDb && supabase) {
-          await supabase.from('buses').upsert(newBus);
-        }
+        newBusesToInsert.push(newBus);
       }
-    } else {
-      // Update capacity on existing buses
-      updatedBuses = updatedBuses.map(b => ({ ...b, capacity: seatsPerBus }));
-      if (isOnlineDb && supabase) {
-        for (const b of updatedBuses) {
-          await supabase.from('buses').update({ capacity: seatsPerBus }).eq('id', b.id);
-        }
+      if (isOnlineDb && supabase && newBusesToInsert.length > 0) {
+        await supabase.from('buses').upsert(newBusesToInsert);
+      }
+    } else if (updatedBuses.length > totalBuses) {
+      // Need to remove excess buses (e.g. Bus 36-40 when reducing 40 -> 35)
+      const excessBuses = updatedBuses.slice(totalBuses);
+      const excessIds = excessBuses.map(b => b.id);
+      updatedBuses = updatedBuses.slice(0, totalBuses);
+
+      if (isOnlineDb && supabase && excessIds.length > 0) {
+        // Unassign jamaah from excess buses
+        await supabase.from('jamaah').update({ bus_id: null, bus_name: null, seat_number: null }).in('bus_id', excessIds);
+        // Delete excess buses in bulk
+        await supabase.from('buses').delete().in('id', excessIds);
       }
     }
+
+    // Update capacity of all retained buses
+    updatedBuses = updatedBuses.map(b => ({ ...b, capacity: seatsPerBus }));
     setBusesList(updatedBuses);
+
+    if (isOnlineDb && supabase) {
+      const sb = supabase;
+      await Promise.all(
+        updatedBuses.map(b =>
+          sb.from('buses').update({ capacity: seatsPerBus }).eq('id', b.id)
+        )
+      );
+    }
 
     // 3. Adjust budget items that depend on bus count
     let updatedCount = 0;
+    const itemsToUpdateInDb: BudgetItem[] = [];
     const newBudgetList = budgetList.map(b => {
       const u = (b.unit || '').toLowerCase();
       const n = (b.name || '').toLowerCase();
@@ -1391,28 +1485,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isBusUnit && b.volume !== totalBuses) {
         updatedCount++;
         const newTotal = totalBuses * b.unit_price;
-        return {
+        const updatedItem = {
           ...b,
           volume: totalBuses,
           total_budget: newTotal
         };
+        itemsToUpdateInDb.push(updatedItem);
+        return updatedItem;
       }
       return b;
     });
 
-    if (updatedCount > 0) {
-      setBudgetList(newBudgetList);
-      if (isOnlineDb && supabase) {
-        for (const b of newBudgetList) {
-          await supabase.from('budget_items').update({
+    setBudgetList(newBudgetList);
+
+    if (isOnlineDb && supabase && itemsToUpdateInDb.length > 0) {
+      const sb = supabase;
+      await Promise.all(
+        itemsToUpdateInDb.map(b =>
+          sb.from('budget_items').update({
             volume: b.volume,
             total_budget: b.total_budget
-          }).eq('id', b.id);
-        }
-      }
+          }).eq('id', b.id)
+        )
+      );
     }
 
-    showToast(`Sinkronisasi berhasil! ${totalBuses} Bus (@${seatsPerBus} kursi), target ${newTarget.toLocaleString('id-ID')} peserta, dan ${updatedCount} pos anggaran bus disesuaikan.`, 'success');
+    // 4. Update cache
+    try {
+      const cacheStr = localStorage.getItem('ziarah_cache_data_v1');
+      if (cacheStr) {
+        const c = JSON.parse(cacheStr);
+        c.settings = { ...c.settings, total_buses: totalBuses, seats_per_bus: seatsPerBus, target_participants: newTarget };
+        c.buses = updatedBuses;
+        c.budget = newBudgetList;
+        localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(c));
+      }
+    } catch {}
+
+    showToast(`Sinkronisasi berhasil! ${totalBuses} Bus (@${seatsPerBus} kursi), target ${newTarget.toLocaleString('id-ID')} peserta, dan ${updatedCount} pos anggaran bus diperbarui permanen di database.`, 'success');
     return { success: true, targetParticipants: newTarget };
   };
 
