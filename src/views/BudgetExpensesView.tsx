@@ -16,6 +16,12 @@ import {
   AlertTriangle,
   X,
   TrendingDown,
+  Calculator,
+  Bus,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Wallet,
   Edit,
   FileSpreadsheet,
   Download,
@@ -25,7 +31,9 @@ import {
 export const BudgetExpensesView: React.FC = () => {
   const { 
     budgetList, 
-    expensesList, 
+    expensesList,
+    settings,
+    paymentsList, 
     addBudgetItem, 
     updateBudgetItem, 
     deleteBudgetItem, 
@@ -73,6 +81,21 @@ export const BudgetExpensesView: React.FC = () => {
   const totalRealizedExpenses = validExpenses.reduce((acc, e) => acc + e.amount, 0);
   const totalVariance = totalBudget - totalRealizedExpenses;
   const absorptionRate = totalBudget > 0 ? Math.round((totalRealizedExpenses / totalBudget) * 100) : 0;
+
+  // Master Fleet & Revenue Target Calculation (Kalkulasi Otomatis Sesuai Pengaturan)
+  const totalBuses = settings.total_buses || 40;
+  const seatsPerBus = settings.seats_per_bus || 57;
+  const targetParticipants = (settings.total_buses && settings.seats_per_bus)
+    ? (settings.total_buses * settings.seats_per_bus)
+    : (settings.target_participants || 2280);
+  const billPerJamaah = settings.default_bill_amount || 185000;
+  const targetIncome = targetParticipants * billPerJamaah; // Rp 421.800.000
+  const projectedSurplus = targetIncome - totalBudget;     // Rp 421.800.000 - Rp 366.756.000 = Rp 55.044.000
+
+  // Realized income from verified payments
+  const validPayments = paymentsList.filter(p => p.status === 'valid');
+  const totalRealizedIncome = validPayments.reduce((acc, p) => acc + p.amount, 0);
+  const currentActualBalance = totalRealizedIncome - totalRealizedExpenses;
 
   const handleOpenAddBudget = () => {
     setEditingBudget(null);
@@ -272,6 +295,150 @@ export const BudgetExpensesView: React.FC = () => {
               <span>Catat Pengeluaran Kas</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* REKAPITULASI PROYEKSI KAS: TARGET PEMASUKAN vs ANGGARAN = HASIL SALDO     */}
+      {/* ========================================================================= */}
+      <div className="bg-gradient-to-br from-slate-900 via-midnight to-teal-950 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-teal-500/20 space-y-4">
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-teal-500/20 text-teal-300 rounded-2xl border border-teal-400/30 shrink-0 shadow-inner">
+              <Calculator className="w-5 h-5 text-teal-300" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2 flex-wrap">
+                <span>Kalkulasi Saldo: Target Kas Masuk vs Total Anggaran</span>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] rounded-full font-bold">
+                  Proyeksi Bersih
+                </span>
+              </h3>
+              <p className="text-[11px] text-teal-200/80">
+                Otomatis mengkalkulasi selisih target penerimaan jamaah dikurangi seluruh rencana pos anggaran kegiatan.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Fleet Parameter Badges */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap text-xs">
+            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
+              <Bus className="w-3.5 h-3.5 text-teal-300" />
+              <span><strong>{totalBuses}</strong> Bus</span>
+            </span>
+            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
+              <Users className="w-3.5 h-3.5 text-blue-300" />
+              <span><strong>{seatsPerBus}</strong> Kursi/Bus (<strong>{targetParticipants.toLocaleString('id-ID')}</strong> Jamaah)</span>
+            </span>
+            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-300" />
+              <span><strong>{formatRupiah(billPerJamaah)}</strong> / jamaah</span>
+            </span>
+          </div>
+        </div>
+
+        {/* 3 Main Calculation Formula Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          {/* 1. Target Kas Masuk */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
+            <div>
+              <div className="flex items-center justify-between text-slate-300 text-xs font-semibold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-teal-300" />
+                  Target Kas Masuk
+                </span>
+                <span className="text-[10px] font-mono text-teal-300 bg-teal-500/20 px-1.5 py-0.5 rounded border border-teal-500/30">
+                  {targetParticipants.toLocaleString('id-ID')} × {formatRupiah(billPerJamaah)}
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-extrabold text-teal-300 font-mono mt-1 tracking-tight">
+                {formatRupiah(targetIncome)}
+              </div>
+            </div>
+            <div className="pt-2.5 border-t border-white/5 mt-3 flex items-center justify-between text-[10px] text-slate-400">
+              <span>{totalBuses} Bus × {seatsPerBus} Kursi</span>
+              <span>100% Target Peserta</span>
+            </div>
+          </div>
+
+          {/* 2. Total Rencana Anggaran (Pengeluaran Rencana) */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
+            <div>
+              <div className="flex items-center justify-between text-slate-300 text-xs font-semibold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <TrendingDown className="w-3.5 h-3.5 text-amber-300" />
+                  Total Rencana Anggaran
+                </span>
+                <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                  {budgetList.length} Pos Alokasi
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-extrabold text-amber-300 font-mono mt-1 tracking-tight">
+                - {formatRupiah(totalBudget)}
+              </div>
+            </div>
+            <div className="pt-2.5 border-t border-white/5 mt-3 flex items-center justify-between text-[10px] text-slate-400">
+              <span>Seluruh Kebutuhan Operasional</span>
+              <span>{targetIncome > 0 ? ((totalBudget / targetIncome) * 100).toFixed(1) : 0}% Porsi Kas</span>
+            </div>
+          </div>
+
+          {/* 3. Estimasi Saldo Bersih / Surplus */}
+          <div className={`rounded-2xl p-4 border flex flex-col justify-between transition ${
+            projectedSurplus >= 0
+              ? 'bg-gradient-to-br from-emerald-950/70 to-emerald-900/50 border-emerald-500/50 shadow-lg shadow-emerald-950/40'
+              : 'bg-gradient-to-br from-rose-950/70 to-rose-900/50 border-rose-500/50 shadow-lg shadow-rose-950/40'
+          }`}>
+            <div>
+              <div className="flex items-center justify-between text-xs font-bold mb-1">
+                <span className="flex items-center gap-1.5 text-white">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  {projectedSurplus >= 0 ? 'Hasil Saldo (Surplus Bersih)' : 'Defisit Anggaran'}
+                </span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                  projectedSurplus >= 0 ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30' : 'bg-rose-400/20 text-rose-300 border border-rose-400/30'
+                }`}>
+                  {projectedSurplus >= 0 ? 'Surplus Dana' : 'Defisit'}
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white mt-1 tracking-tight">
+                {projectedSurplus >= 0 ? formatRupiah(projectedSurplus) : `-${formatRupiah(Math.abs(projectedSurplus))}`}
+              </div>
+            </div>
+            <div className="pt-2.5 border-t border-white/10 mt-3 text-[10px] opacity-90 font-medium">
+              {projectedSurplus >= 0
+                ? `✓ Dana aman! Tersisa saldo cadangan ${formatRupiah(projectedSurplus)} (${targetIncome > 0 ? ((projectedSurplus / targetIncome) * 100).toFixed(1) : 0}%)`
+                : `⚠️ Perhatian! Rencana belanja defisit sebesar ${formatRupiah(Math.abs(projectedSurplus))}`
+              }
+            </div>
+          </div>
+        </div>
+
+        {/* Progress Ratio Bar */}
+        <div className="pt-1">
+          <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1.5 flex-wrap gap-2">
+            <span className="flex items-center gap-1.5 flex-wrap">
+              <span>Alokasi Belanja: <strong>{targetIncome > 0 ? ((totalBudget / targetIncome) * 100).toFixed(1) : 0}%</strong></span>
+              <span className="text-slate-500">•</span>
+              <span>Cadangan Saldo Bersih: <strong>{targetIncome > 0 ? ((projectedSurplus / targetIncome) * 100).toFixed(1) : 0}%</strong></span>
+            </span>
+            <span className="text-teal-300 font-bold">
+              Kalkulasi Otomatis Berdasarkan Master Pengaturan
+            </span>
+          </div>
+          <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden flex">
+            <div 
+              className="bg-amber-400 h-full transition-all duration-500" 
+              style={{ width: `${Math.min(100, targetIncome > 0 ? (totalBudget / targetIncome) * 100 : 0)}%` }} 
+              title={`Rencana Anggaran: ${formatRupiah(totalBudget)}`}
+            />
+            <div 
+              className="bg-emerald-400 h-full transition-all duration-500" 
+              style={{ width: `${Math.max(0, Math.min(100, targetIncome > 0 ? (projectedSurplus / targetIncome) * 100 : 0))}%` }} 
+              title={`Hasil Saldo: ${formatRupiah(projectedSurplus)}`}
+            />
+          </div>
         </div>
       </div>
 
