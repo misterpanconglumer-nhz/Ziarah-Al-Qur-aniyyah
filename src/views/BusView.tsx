@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { sortBusesNaturally } from '../utils/formatters';
 import { useApp } from '../context/AppContext';
 import { Bus, BusStaff } from '../types';
 import { exportBusManifestToExcel } from '../utils/excel';
@@ -54,6 +55,10 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
   const [staffPhone, setStaffPhone] = useState('');
   const [staffRole, setStaffRole] = useState<'tour_leader' | 'pembimbing'>('tour_leader');
   const [staffSeatNumber, setStaffSeatNumber] = useState('1A');
+
+  const sortedBuses = useMemo(() => {
+    return sortBusesNaturally(busesList);
+  }, [busesList]);
 
   const handleOpenAddBus = () => {
     setEditingBus(null);
@@ -161,7 +166,7 @@ export const BusView: React.FC<BusViewProps> = ({ onNavigateToSeats }) => {
 
       {/* Grid of Buses (Ultra-Compact on Mobile) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
-        {busesList.map(bus => {
+        {sortedBuses.map(bus => {
           const passengers = jamaahList.filter(j => j.bus_id === bus.id);
           const staff = bus.staff || [];
           const tl = staff.find(s => s.role === 'tour_leader');

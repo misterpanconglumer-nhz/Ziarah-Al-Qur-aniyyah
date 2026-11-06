@@ -27,6 +27,7 @@ import {
   generate59StandardSeats
 } from '../services/demoData';
 import { checkDuplicateName } from '../utils/duplicateDetection';
+import { sortBusesNaturally } from '../utils/formatters';
 
 interface ToastInfo {
   id: string;
@@ -238,7 +239,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         supabase.from('expenses').select('*').order('created_at', { ascending: false })
       ]);
 
-      const buses = busesRes.data || [];
+      const buses = sortBusesNaturally(busesRes.data || []);
       if (busesRes.data) setBusesList(buses);
 
       let currentSettings: ActivitySettings = stgRes.data || settings;
@@ -844,7 +845,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setBusesList(prev => [...prev, newBus]);
+    setBusesList(prev => sortBusesNaturally([...prev, newBus]));
     // Generate default seat layout
     const initialSeats = generateDefaultSeatsForBus(id, newBus.capacity);
     setBusSeatsMap(prev => ({ ...prev, [id]: initialSeats }));
@@ -1462,7 +1463,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Update capacity of all retained buses
-    updatedBuses = updatedBuses.map(b => ({ ...b, capacity: seatsPerBus }));
+    updatedBuses = sortBusesNaturally(updatedBuses.map(b => ({ ...b, capacity: seatsPerBus })));
     setBusesList(updatedBuses);
 
     if (isOnlineDb && supabase) {

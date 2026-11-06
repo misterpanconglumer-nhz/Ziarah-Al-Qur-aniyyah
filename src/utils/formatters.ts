@@ -81,3 +81,15 @@ export function parsePaymentMethodNote(notes: string | undefined | null): Parsed
   }
   return { cleanNote: trimmed };
 }
+
+/**
+ * Natural numerical sorter for buses (Bus 01, Bus 02, ... Bus 40)
+ */
+export function sortBusesNaturally<T extends { name: string; id: string }>(buses: T[]): T[] {
+  return [...buses].sort((a, b) => {
+    const numA = parseInt(a.name.replace(/\D/g, '') || a.id.replace(/\D/g, '') || '0', 10);
+    const numB = parseInt(b.name.replace(/\D/g, '') || b.id.replace(/\D/g, '') || '0', 10);
+    if (numA !== numB) return numA - numB;
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
