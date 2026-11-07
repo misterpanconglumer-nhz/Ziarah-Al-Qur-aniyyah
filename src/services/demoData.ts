@@ -7,6 +7,7 @@ import {
   BusLayoutConfig,
   SeatRole,
   PaymentTransaction,
+  RombonganPaymentTransaction,
   BudgetItem,
   ExpenseTransaction,
   ActivitySettings
@@ -380,6 +381,37 @@ export const DEMO_EXPENSES: ExpenseTransaction[] = [
     notes: 'Batch 1 sebanyak 300 pcs',
     status: 'valid',
     created_at: '2026-10-04T13:30:00Z'
+  }
+];
+
+
+export const DEMO_ROMBONGAN_PAYMENTS: RombonganPaymentTransaction[] = [
+  {
+    id: 'RPY-0001',
+    rombongan_id: 'RMB-02',
+    rombongan_name: "Himpunan Alumni Al-Qur'aniyyah",
+    date: '2026-11-01',
+    amount: 300000,
+    payment_method: 'Transfer Bank',
+    reference_number: 'TRF-ALUMNI-01',
+    notes: '[Transfer: BSI] Setoran tahap 1 pendaftaran alumni',
+    status: 'valid',
+    created_at: '2026-11-01T08:30:00Z'
+  },
+  {
+    id: 'RPY-0002',
+    rombongan_id: 'RMB-02',
+    rombongan_name: "Himpunan Alumni Al-Qur'aniyyah",
+    date: '2026-11-03',
+    amount: 500000,
+    payment_method: 'Tunai',
+    reference_number: 'KWT-ALUMNI-02',
+    notes: '[Tunai: Diterima Bendahara] Setoran tahap 2',
+    status: 'valid',
+    created_at: '2026-11-03T10:15:00Z'
+
+
+
   }
 ];
 

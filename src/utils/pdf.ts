@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Bus, BusSeat, Jamaah, BusStaff, Rombongan } from '../types';
+import { Bus, BusSeat, Jamaah, BusStaff, Rombongan, RombonganFinancialSummary } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
 
 /**
@@ -457,4 +457,173 @@ export function exportFinancialReportPDF(
   });
 
   doc.save('Laporan_Keuangan_Ziarah_2027.pdf');
+}
+
+/**
+ * Export Laporan Pembayaran & Tunggakan Rombongan PDF (Landscape)
+ */
+export function exportRombonganTunggakanPDF(
+  summaries: RombonganFinancialSummary[],
+  stats: {
+    totalRombongan: number;
+    totalLunas: number;
+    totalBelumLunas: number;
+    totalTunggakan: number;
+    totalTagihan: number;
+    totalSetoran: number;
+  }
+) {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // Header Banner
+  doc.setFillColor(20, 43, 74); // Midnight Navy #142B4A
+  doc.rect(0, 0, 297, 28, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text("ZIARAH AKBAR AL-QUR'ANIYYAH 2027", 148.5, 11, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(75, 199, 190);
+  doc.text('LAPORAN RESMI PEMBAYARAN DAN TUNGGAKAN ROMBONGAN', 148.5, 18, { align: 'center' });
+
+  doc.setFontSize(8);
+  doc.setTextColor(220, 230, 240);
+  doc.text(
+    `Per Tanggal: ${formatDateId(new Date().toISOString())} • Diurutkan berdasarkan Sisa Tunggakan Terbesar`,
+    148.5,
+    24,
+    { align: 'center' }
+  );
+
+  // Summary KPI Cards in PDF (4 boxes)
+  const boxY = 32;
+  const boxH = 14;
+  const boxW = 63;
+  const gap = 5;
+  const startX = 14;
+
+  // Box 1: Total Rombongan
+  doc.setFillColor(244, 247, 250);
+  doc.roundedRect(startX, boxY, boxW, boxH, 2, 2, 'F');
+  doc.setTextColor(100, 116, 139);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL ROMBONGAN', startX + 4, boxY + 5);
+  doc.setTextColor(20, 43, 74);
+  doc.setFontSize(11);
+  doc.text(`${stats.totalRombongan} Kelompok`, startX + 4, boxY + 11);
+
+  // Box 2: Total Lunas
+  const b2X = startX + boxW + gap;
+  doc.setFillColor(236, 253, 245);
+  doc.roundedRect(b2X, boxY, boxW, boxH, 2, 2, 'F');
+  doc.setTextColor(5, 150, 105);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ROMBONGAN LUNAS', b2X + 4, boxY + 5);
+  doc.setTextColor(6, 95, 70);
+  doc.setFontSize(11);
+  doc.text(`${stats.totalLunas} Rombongan`, b2X + 4, boxY + 11);
+
+  // Box 3: Belum Lunas
+  const b3X = b2X + boxW + gap;
+  doc.setFillColor(254, 243, 199);
+  doc.roundedRect(b3X, boxY, boxW, boxH, 2, 2, 'F');
+  doc.setTextColor(217, 119, 6);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BELUM LUNAS / CICILAN', b3X + 4, boxY + 5);
+  doc.setTextColor(180, 83, 9);
+  doc.setFontSize(11);
+  doc.text(`${stats.totalBelumLunas} Rombongan`, b3X + 4, boxY + 11);
+
+  // Box 4: Total Tunggakan
+  const b4X = b3X + boxW + gap;
+  doc.setFillColor(254, 226, 226);
+  doc.roundedRect(b4X, boxY, boxW, boxH, 2, 2, 'F');
+  doc.setTextColor(220, 38, 38);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL SISA TUNGGAKAN', b4X + 4, boxY + 5);
+  doc.setTextColor(153, 27, 27);
+  doc.setFontSize(10.5);
+  doc.text(formatRupiah(stats.totalTunggakan), b4X + 4, boxY + 11);
+
+  // Table
+  const tableRows = summaries.map((s, idx) => [
+    idx + 1,
+    s.rombongan.name,
+    s.rombongan.coordinator_name || '-',
+    s.rombongan.coordinator_phone || '-',
+    `${s.memberCount} Org`,
+    formatRupiah(s.totalBill),
+    formatRupiah(s.totalPaid),
+    formatRupiah(s.remainingBill),
+    `${s.percentage}%`,
+    s.status
+  ]);
+
+  autoTable(doc, {
+    startY: boxY + boxH + 6,
+    head: [[
+      'No',
+      'Nama Rombongan',
+      'Pimpinan / PIC',
+      'WhatsApp',
+      'Jamaah',
+      'Total Tagihan',
+      'Total Setoran',
+      'Sisa Tunggakan',
+      '% Lunas',
+      'Status'
+    ]],
+    body: tableRows.length > 0 ? tableRows : [['-', 'Tidak ada data rombongan', '-', '-', '-', '-', '-', '-', '-', '-']],
+    theme: 'grid',
+    headStyles: {
+      fillColor: [20, 43, 74],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center'
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      cellPadding: 2
+    },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 50, fontStyle: 'bold' },
+      2: { cellWidth: 38 },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 16, halign: 'center' },
+      5: { cellWidth: 30, halign: 'right' },
+      6: { cellWidth: 30, halign: 'right' },
+      7: { cellWidth: 32, halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: 16, halign: 'center' },
+      9: { cellWidth: 20, halign: 'center' }
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    margin: { left: 14, right: 14 },
+    didDrawPage: () => {
+      doc.setFontSize(7);
+      doc.setTextColor(140, 150, 160);
+      doc.text(
+        `Halaman ${doc.getNumberOfPages()} • Laporan Resmi Tunggakan Rombongan Ziarah 2027`,
+        148.5,
+        202,
+        { align: 'center' }
+      );
+    }
+  });
+
+  doc.save('Laporan_Pembayaran_dan_Tunggakan_Rombongan_Ziarah_2027.pdf');
 }

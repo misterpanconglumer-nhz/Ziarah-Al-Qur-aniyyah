@@ -149,6 +149,40 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 8B. ROMBONGAN PAYMENTS (Catatan Transaksi Pembayaran Kolektif Rombongan)
+CREATE TABLE IF NOT EXISTS rombongan_payments (
+  id TEXT PRIMARY KEY,
+  rombongan_id TEXT NOT NULL REFERENCES rombongan(id) ON DELETE CASCADE,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  amount NUMERIC NOT NULL CHECK (amount > 0),
+  payment_method TEXT NOT NULL DEFAULT 'Tunai' CHECK (payment_method IN ('Tunai', 'Transfer Bank', 'QRIS', 'Lainnya')),
+  reference_number TEXT,
+  notes TEXT,
+  receipt_url TEXT,
+  status TEXT NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'cancelled')),
+  cancelled_reason TEXT,
+  cancelled_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rombongan_payments_rombongan_id ON rombongan_payments(rombongan_id);
+CREATE INDEX IF NOT EXISTS idx_rombongan_payments_date ON rombongan_payments(date);
+
+ALTER TABLE rombongan_payments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access on rombongan_payments"
+  ON rombongan_payments FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert on rombongan_payments"
+  ON rombongan_payments FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update on rombongan_payments"
+  ON rombongan_payments FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public delete on rombongan_payments"
+  ON rombongan_payments FOR DELETE USING (true);
+
 -- 9. BUDGET ITEMS (Rencana Anggaran Biaya Operasional)
 CREATE TABLE IF NOT EXISTS budget_items (
   id TEXT PRIMARY KEY,

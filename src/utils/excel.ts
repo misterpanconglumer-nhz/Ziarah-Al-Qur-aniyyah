@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Jamaah, PaymentTransaction, Rombongan, Bus, BudgetItem } from '../types';
+import { Jamaah, PaymentTransaction, Rombongan, Bus, BudgetItem, RombonganFinancialSummary } from '../types';
 import { formatRupiah, formatDateId, parsePaymentMethodNote } from './formatters';
 
 export interface ImportParsedRow {
@@ -245,6 +245,106 @@ export function exportPaymentsToExcel(payments: PaymentTransaction[], fileName: 
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Rekap Pembayaran');
+  XLSX.writeFile(workbook, fileName);
+}
+
+/**
+ * Export Laporan Pembayaran & Tunggakan Rombongan to Excel (.xlsx)
+ */
+export function exportRombonganTunggakanToExcel(
+  summaries: RombonganFinancialSummary[],
+  fileName: string = 'Laporan_Pembayaran_dan_Tunggakan_Rombongan_Ziarah_2027.xlsx'
+) {
+  const exportData = summaries.map((s, idx) => ({
+    'No': idx + 1,
+    'ID Rombongan': s.rombongan.id,
+    'Nama Rombongan': s.rombongan.name,
+    'Nama Pimpinan / Koordinator': s.rombongan.coordinator_name || '-',
+    'Nomor WhatsApp': s.rombongan.coordinator_phone || '-',
+    'Armada Bus': s.rombongan.bus_name || '-',
+    'Jumlah Jamaah': s.memberCount,
+    'Biaya per Jamaah (Rp)': s.feePerJamaah,
+    'Total Tagihan (Rp)': s.totalBill,
+    'Total Setoran (Rp)': s.totalPaid,
+    'Sisa Tagihan / Tunggakan (Rp)': s.remainingBill,
+    'Persentase Pelunasan (%)': `${s.percentage}%`,
+    'Status Pembayaran': s.status,
+    'Jumlah Setoran': s.validPaymentsCount
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+  worksheet['!cols'] = [
+    { wch: 6 },  // No
+    { wch: 14 }, // ID
+    { wch: 30 }, // Nama Rombongan
+    { wch: 26 }, // Pimpinan
+    { wch: 18 }, // WhatsApp
+    { wch: 16 }, // Bus
+    { wch: 14 }, // Jumlah Jamaah
+    { wch: 22 }, // Biaya/Jamaah
+    { wch: 22 }, // Total Tagihan
+    { wch: 22 }, // Total Setoran
+    { wch: 24 }, // Sisa / Tunggakan
+    { wch: 16 }, // %
+    { wch: 18 }, // Status
+    { wch: 16 }  // Jml Setoran
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Tunggakan Rombongan');
+  XLSX.writeFile(workbook, fileName);
+}
+
+/**
+ * Export Laporan Keuangan Gabungan (Kolektif & Individual) to Excel
+ */
+export function exportUnifiedFinancialToExcel(
+  transactions: {
+    id: string;
+    type: 'kolektif' | 'individual';
+    subjectName: string;
+    subjectDetail?: string;
+    date: string;
+    amount: number;
+    payment_method: string;
+    reference_number?: string;
+    notes?: string;
+    status: 'valid' | 'cancelled';
+  }[],
+  fileName: string = 'Laporan_Keuangan_Gabungan_Ziarah_2027.xlsx'
+) {
+  const exportData = transactions.map((t, idx) => ({
+    'No': idx + 1,
+    'Kategori Sumber': t.type === 'kolektif' ? 'PEMBAYARAN KOLEKTIF ROMBONGAN' : 'PEMBAYARAN JAMAAH INDIVIDUAL',
+    'ID Transaksi': t.id,
+    'Nama Rombongan / Jamaah': t.subjectName,
+    'Detail / Kontak': t.subjectDetail || '-',
+    'Tanggal Transaksi': formatDateId(t.date),
+    'Nominal Kas Masuk (Rp)': t.amount,
+    'Metode Pembayaran': t.payment_method,
+    'Nomor Referensi / Kwitansi': t.reference_number || '-',
+    'Status': t.status === 'valid' ? 'Valid Masuk' : 'DIBATALKAN (VOID)',
+    'Keterangan': t.notes || '-'
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData);
+  worksheet['!cols'] = [
+    { wch: 6 },  // No
+    { wch: 32 }, // Kategori Sumber
+    { wch: 18 }, // ID Transaksi
+    { wch: 28 }, // Subjek
+    { wch: 22 }, // Kontak
+    { wch: 18 }, // Tanggal
+    { wch: 22 }, // Nominal
+    { wch: 20 }, // Metode
+    { wch: 24 }, // Ref
+    { wch: 16 }, // Status
+    { wch: 32 }  // Catatan
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Kas Gabungan');
   XLSX.writeFile(workbook, fileName);
 }
 

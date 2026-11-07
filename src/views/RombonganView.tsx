@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Rombongan } from '../types';
 import { formatRupiah } from '../utils/formatters';
+import { RombonganPaymentDetailModal } from '../components/RombonganPaymentDetailModal';
 import { 
   Layers, 
   Plus, 
@@ -14,7 +15,13 @@ import {
   X, 
   AlertTriangle,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Wallet,
+  Receipt,
+  TrendingUp,
+  TrendingDown,
+  CheckCircle,
+  CreditCard
 } from 'lucide-react';
 
 export const RombonganView: React.FC = () => {
@@ -22,16 +29,20 @@ export const RombonganView: React.FC = () => {
     rombonganList, 
     jamaahList, 
     busesList, 
+    settings,
     addRombongan, 
     updateRombongan, 
     deleteRombongan,
+    getRombonganFinancialSummary,
     showToast 
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'Lunas' | 'Cicilan' | 'Belum Bayar'>('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRombongan, setEditingRombongan] = useState<Rombongan | null>(null);
   const [viewingMembersRombongan, setViewingMembersRombongan] = useState<Rombongan | null>(null);
+  const [selectedRombonganForPayment, setSelectedRombonganForPayment] = useState<Rombongan | null>(null);
   const [deletingRombId, setDeletingRombId] = useState<string | null>(null);
 
   // Form states
@@ -39,19 +50,31 @@ export const RombonganView: React.FC = () => {
   const [formCoordinator, setFormCoordinator] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formBusId, setFormBusId] = useState('');
+  const [formFeePerJamaah, setFormFeePerJamaah] = useState<number>(settings.default_bill_amount || 185000);
+  const [formPaymentMode, setFormPaymentMode] = useState<'kolektif' | 'individual'>('kolektif');
   const [formNotes, setFormNotes] = useState('');
 
-  // Search filter
+  // Search and status filter
   const filteredList = useMemo(() => {
     return rombonganList.filter(r => {
       const q = searchTerm.toLowerCase();
-      return (
+      const matchSearch =
         r.name.toLowerCase().includes(q) ||
         r.coordinator_name.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q)
-      );
+        r.id.toLowerCase().includes(q);
+
+      if (!matchSearch) return false;
+
+      if (filterStatus !== 'ALL') {
+        const sum = getRombonganFinancialSummary(r.id);
+        if (filterStatus === 'Lunas' && sum.paymentStatus !== 'Lunas' && sum.paymentStatus !== 'Kelebihan Bayar') return false;
+        if (filterStatus === 'Cicilan' && sum.paymentStatus !== 'Cicilan') return false;
+        if (filterStatus === 'Belum Bayar' && sum.paymentStatus !== 'Belum Bayar') return false;
+      }
+
+      return true;
     });
-  }, [rombonganList, searchTerm]);
+  }, [rombonganList, searchTerm, filterStatus, getRombonganFinancialSummary]);
 
   const handleOpenAdd = () => {
     setEditingRombongan(null);
@@ -59,6 +82,8 @@ export const RombonganView: React.FC = () => {
     setFormCoordinator('');
     setFormPhone('');
     setFormBusId('');
+    setFormFeePerJamaah(settings.default_bill_amount || 185000);
+    setFormPaymentMode('kolektif');
     setFormNotes('');
     setIsAddModalOpen(true);
   };
@@ -69,6 +94,8 @@ export const RombonganView: React.FC = () => {
     setFormCoordinator(r.coordinator_name);
     setFormPhone(r.coordinator_phone || '');
     setFormBusId(r.bus_id || '');
+    setFormFeePerJamaah(r.fee_per_jamaah || settings.default_bill_amount || 185000);
+    setFormPaymentMode(r.payment_mode || (r.name.toLowerCase().includes('umum') ? 'individual' : 'kolektif'));
     setFormNotes(r.notes || '');
     setIsAddModalOpen(true);
   };
@@ -89,6 +116,8 @@ export const RombonganView: React.FC = () => {
         coordinator_phone: formPhone,
         bus_id: formBusId || undefined,
         bus_name: busObj?.name,
+        fee_per_jamaah: formFeePerJamaah,
+        payment_mode: formPaymentMode,
         notes: formNotes
       });
     } else {
@@ -98,6 +127,8 @@ export const RombonganView: React.FC = () => {
         coordinator_phone: formPhone,
         bus_id: formBusId || undefined,
         bus_name: busObj?.name,
+        fee_per_jamaah: formFeePerJamaah,
+        payment_mode: formPaymentMode,
         notes: formNotes
       });
     }
@@ -114,30 +145,30 @@ export const RombonganView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-12">
       {/* Title Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
-            <Layers className="w-6 h-6 text-teal-deep" />
-            <span>Data Rombongan Jamaah</span>
+          <h2 className="text-lg sm:text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
+            <Layers className="w-5 h-5 sm:w-6 h-6 text-teal-deep shrink-0" />
+            <span>Data Rombongan & Pembayaran Kolektif</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Kelola kelompok majelis ta'lim, keluarga besar, dan perwakilan daerah.
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+            Kelola kelompok majelis ta'lim, keluarga besar, setoran bertahap pimpinan, dan sisa tagihan.
           </p>
         </div>
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md self-start sm:self-auto"
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Tambah Rombongan</span>
         </button>
       </div>
 
-      {/* Search Bar */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -148,95 +179,162 @@ export const RombonganView: React.FC = () => {
             className="w-full pl-10 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
           />
         </div>
-        <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-          Total: {rombonganList.length} Rombongan
-        </span>
+
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          {(['ALL', 'Lunas', 'Cicilan', 'Belum Bayar'] as const).map(st => (
+            <button
+              key={st}
+              onClick={() => setFilterStatus(st)}
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition ${
+                filterStatus === st
+                  ? 'bg-midnight text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {st === 'ALL' ? 'Semua Status' : st}
+            </button>
+          ))}
+          <span className="text-xs text-slate-500 font-semibold ml-2 hidden lg:inline">
+            Total: {filteredList.length} Rombongan
+          </span>
+        </div>
       </div>
 
       {/* Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
         {filteredList.map(r => {
           const members = jamaahList.filter(j => j.rombongan_id === r.id);
-          const lunasCount = members.filter(j => j.payment_status === 'Lunas').length;
           const assignedBus = busesList.find(b => b.id === r.bus_id);
+          const summary = getRombonganFinancialSummary(r.id);
 
           return (
             <div 
               key={r.id} 
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 sm:p-5 flex flex-col justify-between space-y-3 sm:space-y-4"
+              className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition p-4 sm:p-5 flex flex-col justify-between space-y-3.5"
             >
               <div>
-                <div className="flex items-start justify-between gap-2">
+                {/* Header: Nama Rombongan, ID, Status Badge */}
+                <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
                   <div>
-                    <h3 className="font-bold text-sm text-midnight">{r.name}</h3>
-                    <span className="text-[10px] font-mono text-slate-400">{r.id}</span>
+                    <h3 className="font-extrabold text-sm sm:text-base text-midnight line-clamp-1">{r.name}</h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] font-mono text-slate-400 font-bold">{r.id}</span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-[10px] font-medium text-slate-500">
+                        {r.payment_mode === 'individual' ? 'Mandiri / Individual' : 'Kolektif'}
+                      </span>
+                    </div>
                   </div>
-                  <span className="px-2.5 py-1 bg-teal-50 text-teal-deep rounded-full text-xs font-bold">
-                    {members.length} Jamaah
-                  </span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      summary.paymentStatus === 'Lunas'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : summary.paymentStatus === 'Kelebihan Bayar'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : summary.paymentStatus === 'Cicilan'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                        : 'bg-rose-100 text-rose-800 border border-rose-200'
+                    }`}>
+                      {summary.paymentStatus}
+                    </span>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold">
+                      {members.length} Jamaah
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-3 space-y-1.5 text-xs text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400 w-24">Koordinator:</span>
-                    <span className="font-semibold text-slate-800">{r.coordinator_name}</span>
+                {/* Coordinator & Contact */}
+                <div className="mt-2.5 space-y-1 text-xs text-slate-600">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Pimpinan / Koord:</span>
+                    <span className="font-bold text-slate-800">{r.coordinator_name || 'Koordinator'}</span>
                   </div>
                   {r.coordinator_phone && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 w-24">Kontak:</span>
-                      <span className="font-mono text-slate-700">{r.coordinator_phone}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Kontak WhatsApp:</span>
+                      <span className="font-mono text-slate-700 font-semibold">{r.coordinator_phone}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400 w-24">Armada Bus:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Armada Bus:</span>
                     <span className="font-semibold text-midnight">
                       {assignedBus ? assignedBus.name : 'Belum Ditentukan'}
                     </span>
                   </div>
                 </div>
 
-                {/* Progress pelunasan anggota rombongan */}
-                <div className="mt-4 pt-3 border-t border-slate-100">
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-500">Status Pelunasan</span>
-                    <span className="font-bold text-teal-deep">
-                      {members.length > 0 ? Math.round((lunasCount / members.length) * 100) : 0}% ({lunasCount}/{members.length})
+                {/* Ringkasan Finansial Kolektif */}
+                <div className="mt-3 p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[11px]">Total Tagihan ({summary.totalMembers} org):</span>
+                    <span className="font-mono font-bold text-slate-800">{formatRupiah(summary.totalBill)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-emerald-700 text-[11px] font-medium">Setoran Masuk:</span>
+                    <span className="font-mono font-bold text-emerald-700">{formatRupiah(summary.totalPaid)}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
+                    <span className="text-slate-700 font-bold text-[11px]">Sisa Tagihan:</span>
+                    <span className={`font-mono font-black text-xs ${
+                      summary.remainingBill === 0 ? 'text-emerald-600' : 'text-rose-600'
+                    }`}>
+                      {summary.remainingBill === 0 ? 'LUNAS (Rp 0)' : formatRupiah(summary.remainingBill)}
                     </span>
+                  </div>
+                </div>
+
+                {/* Progress bar pelunasan setoran */}
+                <div className="mt-3">
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                    <span>Pelunasan Setoran</span>
+                    <span className="text-teal-deep">{summary.percentagePaid}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <div 
-                      className="bg-teal-deep h-full transition-all"
-                      style={{ width: `${members.length > 0 ? (lunasCount / members.length) * 100 : 0}%` }}
+                      className={`h-full transition-all duration-300 ${
+                        summary.percentagePaid >= 100 ? 'bg-emerald-500' : 'bg-teal-deep'
+                      }`}
+                      style={{ width: `${Math.min(100, summary.percentagePaid)}%` }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              {/* Action Buttons: Tombol Detail Pembayaran (Utama) & Aksi Lain */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
                 <button
-                  onClick={() => setViewingMembersRombongan(r)}
-                  className="text-xs text-teal-deep font-bold hover:underline flex items-center gap-1"
+                  onClick={() => setSelectedRombonganForPayment(r)}
+                  className="w-full py-2 px-3 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-2xs"
                 >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Daftar Anggota</span>
+                  <Wallet className="w-3.5 h-3.5 text-teal-700" />
+                  <span>Detail Pembayaran & Setoran</span>
                 </button>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center justify-between">
                   <button
-                    onClick={() => handleOpenEdit(r)}
-                    className="p-1.5 text-slate-400 hover:text-midnight rounded-lg hover:bg-slate-100 transition"
-                    title="Edit Rombongan"
+                    onClick={() => setViewingMembersRombongan(r)}
+                    className="text-xs text-slate-600 hover:text-midnight font-bold hover:underline flex items-center gap-1"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Daftar Anggota</span>
                   </button>
-                  <button
-                    onClick={() => setDeletingRombId(r.id)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
-                    title="Hapus Rombongan"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEdit(r)}
+                      className="p-1.5 text-slate-400 hover:text-midnight rounded-lg hover:bg-slate-100 transition"
+                      title="Edit Rombongan"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeletingRombId(r.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                      title="Hapus Rombongan"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -248,7 +346,7 @@ export const RombonganView: React.FC = () => {
       {/* MODAL: Tambah / Edit Rombongan                                            */}
       {/* ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
             <div className="p-4 bg-midnight text-white flex items-center justify-between">
               <h3 className="font-bold text-sm">
@@ -292,7 +390,7 @@ export const RombonganView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nomor HP Koordinator
+                  Nomor HP / WhatsApp Koordinator
                 </label>
                 <input
                   type="text"
@@ -303,9 +401,40 @@ export const RombonganView: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Tarif per Jamaah (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={formFeePerJamaah || ''}
+                    onChange={e => setFormFeePerJamaah(Number(e.target.value))}
+                    min={1000}
+                    step={1000}
+                    placeholder="185000"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Mode Pembayaran
+                  </label>
+                  <select
+                    value={formPaymentMode}
+                    onChange={e => setFormPaymentMode(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40"
+                  >
+                    <option value="kolektif">Kolektif Rombongan</option>
+                    <option value="individual">Mandiri / Individual</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Alokasi Armada Bus (Opsional)
+                  Alokasi Armada Bus
                 </label>
                 <select
                   value={formBusId}
@@ -342,9 +471,9 @@ export const RombonganView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-midnight rounded-xl hover:bg-midnight-700 transition shadow-md"
+                  className="px-4 py-2 text-xs font-bold text-white bg-midnight hover:bg-midnight-700 rounded-xl transition shadow-md"
                 >
-                  {editingRombongan ? 'Simpan Perubahan' : 'Buat Rombongan'}
+                  {editingRombongan ? 'Simpan Perubahan' : 'Tambahkan Rombongan'}
                 </button>
               </div>
             </form>
@@ -356,14 +485,16 @@ export const RombonganView: React.FC = () => {
       {/* MODAL: Daftar Anggota Rombongan                                           */}
       {/* ========================================================================= */}
       {viewingMembersRombongan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-midnight text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-midnight text-white flex items-center justify-between shrink-0">
               <div>
-                <h3 className="font-bold text-sm">Anggota: {viewingMembersRombongan.name}</h3>
-                <p className="text-[11px] text-teal-soft">
-                  Koordinator: {viewingMembersRombongan.coordinator_name}
-                </p>
+                <h3 className="font-bold text-sm">
+                  Anggota: {viewingMembersRombongan.name}
+                </h3>
+                <span className="text-xs text-slate-400">
+                  Total {jamaahList.filter(j => j.rombongan_id === viewingMembersRombongan.id).length} Jamaah Terdaftar
+                </span>
               </div>
               <button
                 onClick={() => setViewingMembersRombongan(null)}
@@ -373,48 +504,52 @@ export const RombonganView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 max-h-[70vh] overflow-y-auto space-y-2">
+            <div className="p-4 overflow-y-auto divide-y divide-slate-100 flex-1">
               {jamaahList.filter(j => j.rombongan_id === viewingMembersRombongan.id).length === 0 ? (
-                <p className="text-center text-xs text-slate-400 py-6">
-                  Belum ada jamaah yang terdaftar dalam rombongan ini.
-                </p>
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  Belum ada jamaah yang dialokasikan ke rombongan ini.
+                </div>
               ) : (
                 jamaahList
                   .filter(j => j.rombongan_id === viewingMembersRombongan.id)
-                  .map((m, idx) => (
-                    <div 
-                      key={m.id} 
-                      className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-5 text-slate-400 font-mono text-[11px]">{idx + 1}.</span>
-                        <div>
-                          <p className="font-bold text-slate-800">{m.name}</p>
-                          <p className="text-[10px] text-slate-400">
-                            {m.bus_name ? `${m.bus_name} (Kursi ${m.seat_number || '-'})` : 'Belum dapat bus'}
-                          </p>
+                  .map((j, idx) => (
+                    <div key={j.id} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-slate-400">#{idx + 1}</span>
+                          <span className="font-bold text-midnight">{j.name}</span>
+                          {j.seat_number && (
+                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-[10px] rounded">
+                              Kursi {j.seat_number}
+                            </span>
+                          )}
                         </div>
+                        <span className="text-[11px] text-slate-400 block mt-0.5">{j.phone || 'Tanpa HP'}</span>
                       </div>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          m.payment_status === 'Lunas'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : m.payment_status === 'Cicilan'
-                            ? 'bg-teal-100 text-teal-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {m.payment_status}
-                      </span>
+
+                      <div className="text-right">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          j.payment_status === 'Lunas' 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : j.payment_status === 'Cicilan'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {j.payment_status}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                          {formatRupiah(j.bill_amount)}
+                        </span>
+                      </div>
                     </div>
                   ))
               )}
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
               <button
                 onClick={() => setViewingMembersRombongan(null)}
-                className="px-4 py-2 text-xs font-bold bg-midnight text-white rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl"
               >
                 Tutup
               </button>
@@ -424,32 +559,42 @@ export const RombonganView: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
+      {/* MODAL: Detail Pembayaran Kolektif Rombongan                               */}
+      {/* ========================================================================= */}
+      {selectedRombonganForPayment && (
+        <RombonganPaymentDetailModal
+          rombongan={selectedRombonganForPayment}
+          onClose={() => setSelectedRombonganForPayment(null)}
+        />
+      )}
+
+      {/* ========================================================================= */}
       {/* MODAL: Konfirmasi Hapus Rombongan                                         */}
       {/* ========================================================================= */}
       {deletingRombId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 text-center shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+              <AlertTriangle className="w-6 h-6" />
             </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900">Hapus Rombongan</h3>
+            <div className="text-center">
+              <h3 className="font-bold text-slate-800 text-sm">Hapus Rombongan Ini?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Apakah Anda yakin ingin menghapus rombongan ini? Rombongan hanya dapat dihapus jika tidak ada jamaah terdaftar di dalamnya.
+                Data rombongan akan dihapus. Jamaah yang terdaftar dalam rombongan ini tidak akan terhapus, namun status rombongannya akan dikosongkan.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center justify-center gap-2 pt-2">
               <button
                 onClick={() => setDeletingRombId(null)}
-                className="flex-1 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
               >
                 Batal
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 py-2 text-xs font-bold text-white bg-rose-600 rounded-xl hover:bg-rose-700"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition shadow-md"
               >
-                Hapus
+                Hapus Rombongan
               </button>
             </div>
           </div>

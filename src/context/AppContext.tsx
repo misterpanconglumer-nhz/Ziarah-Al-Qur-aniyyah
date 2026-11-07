@@ -7,6 +7,9 @@ import {
   BusSeat,
   BusStaff,
   PaymentTransaction,
+  RombonganPaymentTransaction,
+  RombonganPaymentStatus,
+  RombonganFinancialSummary,
   BudgetItem,
   ExpenseTransaction,
   ActivitySettings,
@@ -23,6 +26,7 @@ import {
   DEMO_PAYMENTS,
   DEMO_BUDGET,
   DEMO_EXPENSES,
+  DEMO_ROMBONGAN_PAYMENTS,
   generateDefaultSeatsForBus,
   generate59StandardSeats
 } from '../services/demoData';
@@ -57,6 +61,7 @@ interface AppContextType {
   rombonganList: Rombongan[];
   busesList: Bus[];
   paymentsList: PaymentTransaction[];
+  rombonganPaymentsList: RombonganPaymentTransaction[];
   budgetList: BudgetItem[];
   expensesList: ExpenseTransaction[];
   busSeatsMap: Record<string, BusSeat[]>; // busId -> seats array
@@ -100,6 +105,13 @@ interface AppContextType {
   addPayment: (data: Omit<PaymentTransaction, 'id' | 'status' | 'created_at'>) => Promise<{ success: boolean; error?: string }>;
   updatePayment: (paymentId: string, data: Partial<Pick<PaymentTransaction, 'payment_method' | 'reference_number' | 'notes' | 'date' | 'amount'>>) => Promise<{ success: boolean; error?: string }>;
   voidPayment: (paymentId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Rombongan Collective Payments
+  addRombonganPayment: (data: Omit<RombonganPaymentTransaction, 'id' | 'created_at'>) => Promise<{ success: boolean; id?: string; error?: string }>;
+  updateRombonganPayment: (id: string, updates: Partial<RombonganPaymentTransaction>) => Promise<{ success: boolean; error?: string }>;
+  voidRombonganPayment: (id: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  deleteRombonganPayment: (id: string) => Promise<{ success: boolean; error?: string }>;
+  getRombonganFinancialSummary: (rombonganId: string) => RombonganFinancialSummary;
 
   // Budget & Expenses
   addBudgetItem: (data: Omit<BudgetItem, 'id' | 'created_at'>) => Promise<void>;
@@ -165,6 +177,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [rombonganList, setRombonganList] = useState<Rombongan[]>(() => cachedData?.rombongan || DEMO_ROMBONGAN);
   const [busesList, setBusesList] = useState<Bus[]>(() => cachedData?.buses || DEMO_BUSES);
   const [paymentsList, setPaymentsList] = useState<PaymentTransaction[]>(() => cachedData?.payments || DEMO_PAYMENTS);
+  const [rombonganPaymentsList, setRombonganPaymentsList] = useState<RombonganPaymentTransaction[]>(() => cachedData?.rombonganPayments || DEMO_ROMBONGAN_PAYMENTS);
   const [budgetList, setBudgetList] = useState<BudgetItem[]>(() => cachedData?.budget || DEMO_BUDGET);
   const [expensesList, setExpensesList] = useState<ExpenseTransaction[]>(() => cachedData?.expenses || DEMO_EXPENSES);
 
@@ -285,6 +298,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (bgRes.data) setBudgetList(bgRes.data);
       if (expRes.data) setExpensesList(expRes.data);
 
+      // Load rombongan payments
+      let loadedRpy: RombonganPaymentTransaction[] = [];
+      try {
+        const rpyRes = await supabase.from('rombongan_payments').select('*').order('created_at', { ascending: false });
+        if (!rpyRes.error && rpyRes.data) {
+          loadedRpy = rpyRes.data;
+        } else {
+          const auditRpy = await supabase
+            .from('audit_logs')
+            .select('*')
+            .eq('table_name', 'rombongan_payments')
+            .order('created_at', { ascending: false });
+          if (auditRpy.data && auditRpy.data.length > 0) {
+            const auditMap = new Map<string, RombonganPaymentTransaction>();
+            auditRpy.data.forEach(log => {
+              if (log.details && log.record_id && !auditMap.has(log.record_id)) {
+                if (log.action !== 'DELETE') {
+                  auditMap.set(log.record_id, log.details as RombonganPaymentTransaction);
+                }
+              }
+            });
+            loadedRpy = Array.from(auditMap.values());
+          }
+        }
+        if (loadedRpy.length > 0 || !rpyRes.error) {
+          const enrichedRpy: RombonganPaymentTransaction[] = loadedRpy.map(rpy => ({
+            ...rpy,
+            rombongan_name: rombMap.get(rpy.rombongan_id) || rpy.rombongan_name
+          }));
+          setRombonganPaymentsList(enrichedRpy);
+        }
+      } catch (err) {
+        console.warn('Error loading rombongan_payments:', err);
+      }
+
       // Synchronize busSeatsMap with jamaah & staff assignments
       setBusSeatsMap(prevMap => {
         const newMap: Record<string, BusSeat[]> = { ...prevMap };
@@ -338,6 +386,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           payments: enrichedPayments,
           budget: bgRes.data,
           expenses: expRes.data,
+          rombonganPayments: loadedRpy,
           timestamp: Date.now()
         }));
       } catch {}
@@ -1336,6 +1385,163 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Budget & Expenses
+  // Rombongan Collective Payments Implementation
+  const getRombonganFinancialSummary = (rombonganId: string): RombonganFinancialSummary => {
+    const romb = rombonganList.find(r => r.id === rombonganId) || {
+      id: rombonganId,
+      name: 'Rombongan',
+      coordinator_name: 'Koordinator',
+      created_at: new Date().toISOString()
+    };
+    const members = jamaahList.filter(j => j.rombongan_id === rombonganId);
+    const totalMembers = members.length;
+    const defaultBill = settings.default_bill_amount || 185000;
+    const feePerJamaah = romb.fee_per_jamaah || (totalMembers > 0 ? (members[0].bill_amount || defaultBill) : defaultBill);
+    const totalBill = totalMembers > 0 ? members.reduce((sum, j) => sum + (j.bill_amount || feePerJamaah), 0) : 0;
+    const validPayments = rombonganPaymentsList.filter(p => p.rombongan_id === rombonganId && p.status === 'valid');
+    const totalPaid = validPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const remainingBill = Math.max(0, totalBill - totalPaid);
+    const percentagePaid = totalBill > 0 ? Math.min(100, Math.round((totalPaid / totalBill) * 100)) : (totalPaid > 0 ? 100 : 0);
+
+    let paymentStatus: RombonganPaymentStatus = 'Belum Bayar';
+    if (totalPaid === 0) {
+      paymentStatus = 'Belum Bayar';
+    } else if (totalPaid > totalBill && totalBill > 0) {
+      paymentStatus = 'Kelebihan Bayar';
+    } else if (totalPaid >= totalBill && totalBill > 0) {
+      paymentStatus = 'Lunas';
+    } else {
+      paymentStatus = 'Cicilan';
+    }
+
+    return {
+      rombongan: romb,
+      totalMembers,
+      memberCount: totalMembers,
+      feePerJamaah,
+      totalBill,
+      totalPaid,
+      remainingBill,
+      percentagePaid,
+      percentage: percentagePaid,
+      paymentStatus,
+      status: paymentStatus.toUpperCase(),
+      validPaymentsCount: validPayments.length
+    };
+  };
+
+  const addRombonganPayment = async (data: Omit<RombonganPaymentTransaction, 'id' | 'created_at'>) => {
+    const id = `RPY-${String(rombonganPaymentsList.length + 1).padStart(4, '0')}`;
+    const now = new Date().toISOString();
+    const romb = rombonganList.find(r => r.id === data.rombongan_id);
+    const newPayment: RombonganPaymentTransaction = {
+      ...data,
+      id,
+      rombongan_name: romb?.name || data.rombongan_name,
+      status: data.status || 'valid',
+      created_at: now
+    };
+
+    setRombonganPaymentsList(prev => [newPayment, ...prev]);
+
+    try {
+      const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
+      const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
+      cache.rombonganPayments = [newPayment, ...(cache.rombonganPayments || [])];
+      localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        const { rombongan_name, ...dbPayload } = newPayment;
+        await supabase.from('rombongan_payments').insert([dbPayload]);
+      } catch (err) {
+        console.warn('Direct insert rombongan_payments failed:', err);
+      }
+      try {
+        await supabase.from('audit_logs').insert([{
+          action: 'INSERT',
+          table_name: 'rombongan_payments',
+          record_id: id,
+          details: newPayment
+        }]);
+      } catch {}
+    }
+
+    showToast(`Setoran Rp ${newPayment.amount.toLocaleString('id-ID')} untuk ${newPayment.rombongan_name || 'Rombongan'} berhasil dicatat!`, 'success');
+    return { success: true, id };
+  };
+
+  const updateRombonganPayment = async (id: string, updates: Partial<RombonganPaymentTransaction>) => {
+    const updated = { ...updates, updated_at: new Date().toISOString() };
+    setRombonganPaymentsList(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+
+    try {
+      const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
+      if (cacheRaw) {
+        const cache = JSON.parse(cacheRaw);
+        cache.rombonganPayments = (cache.rombonganPayments || []).map((p: any) => p.id === id ? { ...p, ...updated } : p);
+        localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
+      }
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        const { rombongan_name, ...dbPayload } = updated;
+        await supabase.from('rombongan_payments').update(dbPayload).eq('id', id);
+      } catch {}
+      try {
+        await supabase.from('audit_logs').insert([{
+          action: 'UPDATE',
+          table_name: 'rombongan_payments',
+          record_id: id,
+          details: updated
+        }]);
+      } catch {}
+    }
+
+    showToast('Data setoran rombongan berhasil diperbarui.', 'success');
+    return { success: true };
+  };
+
+  const voidRombonganPayment = async (id: string, reason: string = 'Dibatalkan oleh admin') => {
+    return updateRombonganPayment(id, {
+      status: 'cancelled',
+      cancelled_reason: reason,
+      cancelled_at: new Date().toISOString()
+    });
+  };
+
+  const deleteRombonganPayment = async (id: string) => {
+    setRombonganPaymentsList(prev => prev.filter(p => p.id !== id));
+
+    try {
+      const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
+      if (cacheRaw) {
+        const cache = JSON.parse(cacheRaw);
+        cache.rombonganPayments = (cache.rombonganPayments || []).filter((p: any) => p.id !== id);
+        localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
+      }
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        await supabase.from('rombongan_payments').delete().eq('id', id);
+      } catch {}
+      try {
+        await supabase.from('audit_logs').insert([{
+          action: 'DELETE',
+          table_name: 'rombongan_payments',
+          record_id: id,
+          details: { deleted_at: new Date().toISOString() }
+        }]);
+      } catch {}
+    }
+
+    showToast('Transaksi setoran rombongan berhasil dihapus.', 'info');
+    return { success: true };
+  };
+
   const addBudgetItem = async (data: Omit<BudgetItem, 'id' | 'created_at'>) => {
     const id = `BDG-${String(budgetList.length + 1).padStart(2, '0')}`;
     const newItem: BudgetItem = {
@@ -1599,6 +1805,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addPayment,
         updatePayment,
         voidPayment,
+        rombonganPaymentsList,
+        addRombonganPayment,
+        updateRombonganPayment,
+        voidRombonganPayment,
+        deleteRombonganPayment,
+        getRombonganFinancialSummary,
         addBudgetItem,
         updateBudgetItem,
         deleteBudgetItem,

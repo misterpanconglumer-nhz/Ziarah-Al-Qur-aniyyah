@@ -30,6 +30,8 @@ export interface Rombongan {
   bus_id?: string;
   bus_name?: string;
   total_members?: number;
+  fee_per_jamaah?: number;
+  payment_mode?: 'kolektif' | 'individual';
   notes?: string;
   created_at: string;
 }
@@ -142,4 +144,38 @@ export interface DuplicateCheckResult {
   similarityPercentage: number;
   matchedWith?: Jamaah;
   reason: string;
+}
+
+export type RombonganPaymentStatus = 'Belum Bayar' | 'Cicilan' | 'Lunas' | 'Kelebihan Bayar';
+
+export interface RombonganPaymentTransaction {
+  id: string; // e.g. RPY-0001
+  rombongan_id: string;
+  rombongan_name?: string;
+  date: string;
+  amount: number;
+  payment_method: 'Tunai' | 'Transfer Bank' | 'QRIS' | 'Lainnya';
+  reference_number?: string;
+  notes?: string;
+  receipt_url?: string;
+  status: 'valid' | 'cancelled';
+  cancelled_reason?: string;
+  cancelled_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface RombonganFinancialSummary {
+  rombongan: Rombongan;
+  totalMembers: number;
+  memberCount: number;
+  feePerJamaah: number;
+  totalBill: number;
+  totalPaid: number;
+  remainingBill: number;
+  percentagePaid: number;
+  percentage: number;
+  paymentStatus: RombonganPaymentStatus;
+  status: string;
+  validPaymentsCount: number;
 }
