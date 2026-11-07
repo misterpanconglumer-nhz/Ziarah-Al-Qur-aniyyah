@@ -236,20 +236,20 @@ export const BudgetExpensesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-3.5 sm:space-y-6 max-w-7xl mx-auto pb-8 sm:pb-12">
       {/* Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
-            <PieChart className="w-6 h-6 text-teal-deep" />
+          <h2 className="text-lg sm:text-xl font-extrabold text-midnight tracking-tight flex items-center gap-2">
+            <PieChart className="w-5 h-5 sm:w-6 h-6 text-teal-deep shrink-0" />
             <span>Anggaran & Realisasi Pengeluaran Kas</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
             Pemisahan rencana pos anggaran operasional dan realisasi pengeluaran kas aktual.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <input
             type="file"
             ref={fileInputRef}
@@ -262,7 +262,7 @@ export const BudgetExpensesView: React.FC = () => {
             <>
               <button
                 onClick={downloadBudgetTemplate}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition shadow-sm"
+                className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition shadow-xs"
                 title="Unduh format template Excel rencana anggaran"
               >
                 <Download className="w-4 h-4 text-slate-500" />
@@ -271,7 +271,7 @@ export const BudgetExpensesView: React.FC = () => {
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+                className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition shadow-xs"
                 title="Impor pos anggaran dari file Excel (misal: ZIARAH 2027.xlsx)"
               >
                 <Upload className="w-4 h-4 text-emerald-100" />
@@ -280,7 +280,7 @@ export const BudgetExpensesView: React.FC = () => {
 
               <button
                 onClick={handleOpenAddBudget}
-                className="flex items-center gap-1.5 px-4 py-2 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+                className="flex items-center gap-1 px-3 py-1.5 sm:px-4 sm:py-2 bg-midnight hover:bg-midnight-700 text-white text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition shadow-xs"
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Pos</span>
@@ -289,7 +289,7 @@ export const BudgetExpensesView: React.FC = () => {
           ) : (
             <button
               onClick={() => handleOpenAddExpense()}
-              className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-md"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-rose-600 hover:bg-rose-700 text-white text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition shadow-xs"
             >
               <Plus className="w-4 h-4" />
               <span>Catat Pengeluaran Kas</span>
@@ -301,49 +301,49 @@ export const BudgetExpensesView: React.FC = () => {
       {/* ========================================================================= */}
       {/* REKAPITULASI PROYEKSI KAS: TARGET PEMASUKAN vs ANGGARAN = HASIL SALDO     */}
       {/* ========================================================================= */}
-      <div className="bg-gradient-to-br from-slate-900 via-midnight to-teal-950 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-teal-500/20 space-y-4">
+      <div className="bg-gradient-to-br from-slate-900 via-midnight to-teal-950 text-white rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-xl border border-teal-500/20 space-y-2.5 sm:space-y-4">
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-teal-500/20 text-teal-300 rounded-2xl border border-teal-400/30 shrink-0 shadow-inner">
-              <Calculator className="w-5 h-5 text-teal-300" />
+            <div className="p-1.5 sm:p-2.5 bg-teal-500/20 text-teal-300 rounded-xl sm:rounded-2xl border border-teal-400/30 shrink-0 shadow-inner">
+              <Calculator className="w-4 h-4 sm:w-5 h-5 text-teal-300" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2 flex-wrap">
+              <h3 className="font-extrabold text-xs sm:text-base text-white flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span>Kalkulasi Saldo: Target Kas Masuk vs Total Anggaran</span>
-                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] rounded-full font-bold">
+                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] sm:text-[10px] rounded-full font-bold">
                   Proyeksi Bersih
                 </span>
               </h3>
-              <p className="text-[11px] text-teal-200/80">
+              <p className="text-[10px] sm:text-[11px] text-teal-200/80">
                 Otomatis mengkalkulasi selisih target penerimaan jamaah dikurangi seluruh rencana pos anggaran kegiatan.
               </p>
             </div>
           </div>
 
           {/* Quick Fleet Parameter Badges */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap text-xs">
-            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
-              <Bus className="w-3.5 h-3.5 text-teal-300" />
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap text-[10px] sm:text-xs">
+            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white/10 backdrop-blur-xs rounded-lg sm:rounded-xl font-medium border border-white/10 flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px]">
+              <Bus className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-teal-300" />
               <span><strong>{totalBuses}</strong> Bus</span>
             </span>
-            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
-              <Users className="w-3.5 h-3.5 text-blue-300" />
+            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white/10 backdrop-blur-xs rounded-lg sm:rounded-xl font-medium border border-white/10 flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px]">
+              <Users className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-300" />
               <span><strong>{seatsPerBus}</strong> Kursi/Bus (<strong>{targetParticipants.toLocaleString('id-ID')}</strong> Jamaah)</span>
             </span>
-            <span className="px-2.5 py-1 bg-white/10 backdrop-blur-xs rounded-xl font-medium border border-white/10 flex items-center gap-1.5 text-[11px]">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-300" />
+            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white/10 backdrop-blur-xs rounded-lg sm:rounded-xl font-medium border border-white/10 flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px]">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-300" />
               <span><strong>{formatRupiah(billPerJamaah)}</strong> / jamaah</span>
             </span>
           </div>
         </div>
 
         {/* 3 Main Calculation Formula Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3.5">
           {/* 1. Target Kas Masuk */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
+          <div className="bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
             <div>
-              <div className="flex items-center justify-between text-slate-300 text-xs font-semibold mb-1">
+              <div className="flex items-center justify-between text-slate-300 text-[11px] sm:text-xs font-semibold mb-0.5 sm:mb-1">
                 <span className="flex items-center gap-1.5">
                   <Wallet className="w-3.5 h-3.5 text-teal-300" />
                   Target Kas Masuk
@@ -352,20 +352,20 @@ export const BudgetExpensesView: React.FC = () => {
                   {targetParticipants.toLocaleString('id-ID')} × {formatRupiah(billPerJamaah)}
                 </span>
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold text-teal-300 font-mono mt-1 tracking-tight">
+              <div className="text-base sm:text-2xl font-black text-teal-300 font-mono mt-0.5 sm:mt-1 tracking-tight">
                 {formatRupiah(targetIncome)}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-white/5 mt-3 flex items-center justify-between text-[10px] text-slate-400">
+            <div className="pt-1.5 sm:pt-2.5 border-t border-white/5 mt-1.5 sm:mt-3 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400">
               <span>{totalBuses} Bus × {seatsPerBus} Kursi</span>
               <span>100% Target Peserta</span>
             </div>
           </div>
 
           {/* 2. Total Rencana Anggaran (Pengeluaran Rencana) */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
+          <div className="bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between hover:bg-white/[0.08] transition shadow-xs">
             <div>
-              <div className="flex items-center justify-between text-slate-300 text-xs font-semibold mb-1">
+              <div className="flex items-center justify-between text-slate-300 text-[11px] sm:text-xs font-semibold mb-0.5 sm:mb-1">
                 <span className="flex items-center gap-1.5">
                   <TrendingDown className="w-3.5 h-3.5 text-amber-300" />
                   Total Rencana Anggaran
@@ -374,24 +374,24 @@ export const BudgetExpensesView: React.FC = () => {
                   {budgetList.length} Pos Alokasi
                 </span>
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold text-amber-300 font-mono mt-1 tracking-tight">
+              <div className="text-base sm:text-2xl font-black text-amber-300 font-mono mt-0.5 sm:mt-1 tracking-tight">
                 - {formatRupiah(totalBudget)}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-white/5 mt-3 flex items-center justify-between text-[10px] text-slate-400">
+            <div className="pt-1.5 sm:pt-2.5 border-t border-white/5 mt-1.5 sm:mt-3 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400">
               <span>Seluruh Kebutuhan Operasional</span>
               <span>{targetIncome > 0 ? ((totalBudget / targetIncome) * 100).toFixed(1) : 0}% Porsi Kas</span>
             </div>
           </div>
 
           {/* 3. Estimasi Saldo Bersih / Surplus */}
-          <div className={`rounded-2xl p-4 border flex flex-col justify-between transition ${
+          <div className={`rounded-xl sm:rounded-2xl p-2.5 sm:p-4 border flex flex-col justify-between transition ${
             projectedSurplus >= 0
               ? 'bg-gradient-to-br from-emerald-950/70 to-emerald-900/50 border-emerald-500/50 shadow-lg shadow-emerald-950/40'
               : 'bg-gradient-to-br from-rose-950/70 to-rose-900/50 border-rose-500/50 shadow-lg shadow-rose-950/40'
           }`}>
             <div>
-              <div className="flex items-center justify-between text-xs font-bold mb-1">
+              <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold mb-0.5 sm:mb-1">
                 <span className="flex items-center gap-1.5 text-white">
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                   {projectedSurplus >= 0 ? 'Hasil Saldo (Surplus Bersih)' : 'Defisit Anggaran'}
@@ -402,11 +402,11 @@ export const BudgetExpensesView: React.FC = () => {
                   {projectedSurplus >= 0 ? 'Surplus Dana' : 'Defisit'}
                 </span>
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white mt-1 tracking-tight">
+              <div className="text-base sm:text-2xl font-black font-mono text-white mt-0.5 sm:mt-1 tracking-tight">
                 {projectedSurplus >= 0 ? formatRupiah(projectedSurplus) : `-${formatRupiah(Math.abs(projectedSurplus))}`}
               </div>
             </div>
-            <div className="pt-2.5 border-t border-white/10 mt-3 text-[10px] opacity-90 font-medium">
+            <div className="pt-1.5 sm:pt-2.5 border-t border-white/10 mt-1.5 sm:mt-3 text-[9px] sm:text-[10px] opacity-90 font-medium">
               {projectedSurplus >= 0
                 ? `✓ Dana aman! Tersisa saldo cadangan ${formatRupiah(projectedSurplus)} (${targetIncome > 0 ? ((projectedSurplus / targetIncome) * 100).toFixed(1) : 0}%)`
                 : `⚠️ Perhatian! Rencana belanja defisit sebesar ${formatRupiah(Math.abs(projectedSurplus))}`
@@ -417,17 +417,17 @@ export const BudgetExpensesView: React.FC = () => {
 
         {/* Progress Ratio Bar */}
         <div className="pt-1">
-          <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1.5 flex-wrap gap-2">
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-300 mb-1 sm:mb-1.5 flex-wrap gap-1 sm:gap-2">
             <span className="flex items-center gap-1.5 flex-wrap">
               <span>Alokasi Belanja: <strong>{targetIncome > 0 ? ((totalBudget / targetIncome) * 100).toFixed(1) : 0}%</strong></span>
               <span className="text-slate-500">•</span>
               <span>Cadangan Saldo Bersih: <strong>{targetIncome > 0 ? ((projectedSurplus / targetIncome) * 100).toFixed(1) : 0}%</strong></span>
             </span>
-            <span className="text-teal-300 font-bold">
+            <span className="text-teal-300 font-bold hidden sm:inline">
               Kalkulasi Otomatis Berdasarkan Master Pengaturan
             </span>
           </div>
-          <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden flex">
+          <div className="w-full bg-white/10 h-2 sm:h-2.5 rounded-full overflow-hidden flex">
             <div 
               className="bg-amber-400 h-full transition-all duration-500" 
               style={{ width: `${Math.min(100, targetIncome > 0 ? (totalBudget / targetIncome) * 100 : 0)}%` }} 
@@ -443,32 +443,32 @@ export const BudgetExpensesView: React.FC = () => {
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Total Rencana Anggaran</span>
-          <div className="text-base sm:text-xl font-extrabold text-midnight mt-0.5 sm:mt-1 truncate">{formatRupiah(totalBudget)}</div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block">{budgetList.length} Pos Alokasi</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] sm:text-xs font-semibold text-slate-500 block truncate">Total Rencana Anggaran</span>
+          <div className="text-sm sm:text-lg font-extrabold text-midnight mt-0.5 truncate">{formatRupiah(totalBudget)}</div>
+          <span className="text-[9px] sm:text-[11px] text-slate-400 mt-0.5 block">{budgetList.length} Pos Alokasi</span>
         </div>
 
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Realisasi Pengeluaran</span>
-          <div className="text-base sm:text-xl font-extrabold text-rose-700 mt-0.5 sm:mt-1 truncate">{formatRupiah(totalRealizedExpenses)}</div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block">{validExpenses.length} Transaksi Keluar</span>
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] sm:text-xs font-semibold text-slate-500 block truncate">Realisasi Pengeluaran</span>
+          <div className="text-sm sm:text-lg font-extrabold text-rose-700 mt-0.5 truncate">{formatRupiah(totalRealizedExpenses)}</div>
+          <span className="text-[9px] sm:text-[11px] text-slate-400 mt-0.5 block">{validExpenses.length} Transaksi Keluar</span>
         </div>
 
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Sisa Alokasi</span>
-          <div className={`text-base sm:text-xl font-extrabold mt-0.5 sm:mt-1 truncate ${totalVariance >= 0 ? 'text-teal-deep' : 'text-rose-600'}`}>
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] sm:text-xs font-semibold text-slate-500 block truncate">Sisa Alokasi</span>
+          <div className={`text-sm sm:text-lg font-extrabold mt-0.5 truncate ${totalVariance >= 0 ? 'text-teal-deep' : 'text-rose-600'}`}>
             {formatRupiah(totalVariance)}
           </div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 block truncate">
+          <span className="text-[9px] sm:text-[11px] text-slate-400 mt-0.5 block truncate">
             {totalVariance >= 0 ? 'Anggaran Aman' : 'Melebihi Anggaran'}
           </span>
         </div>
 
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 block truncate">Penyerapan Dana</span>
-          <div className="text-base sm:text-xl font-extrabold text-teal-deep mt-0.5 sm:mt-1">{absorptionRate}%</div>
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] sm:text-xs font-semibold text-slate-500 block truncate">Penyerapan Dana</span>
+          <div className="text-sm sm:text-lg font-extrabold text-teal-deep mt-0.5">{absorptionRate}%</div>
           <div className="w-full bg-slate-100 h-1.5 sm:h-2 rounded-full overflow-hidden mt-1.5 sm:mt-2">
             <div 
               className={`h-full ${absorptionRate > 100 ? 'bg-rose-500' : 'bg-teal-deep'}`}
@@ -482,25 +482,25 @@ export const BudgetExpensesView: React.FC = () => {
       <div className="flex border-b border-slate-200">
         <button
           onClick={() => setActiveSubTab('budget')}
-          className={`py-3 px-5 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`py-2 sm:py-3 px-3 sm:px-5 text-[11px] sm:text-xs font-bold transition flex items-center gap-1.5 sm:gap-2 border-b-2 ${
             activeSubTab === 'budget'
-              ? 'border-midnight text-midnight bg-white rounded-t-xl'
+              ? 'border-midnight text-midnight bg-white rounded-t-lg sm:rounded-t-xl'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Layers className="w-4 h-4" />
+          <Layers className="w-3.5 h-3.5 sm:w-4 h-4" />
           <span>Rencana Pos Anggaran ({budgetList.length})</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('expenses')}
-          className={`py-3 px-5 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`py-2 sm:py-3 px-3 sm:px-5 text-[11px] sm:text-xs font-bold transition flex items-center gap-1.5 sm:gap-2 border-b-2 ${
             activeSubTab === 'expenses'
-              ? 'border-rose-600 text-rose-700 bg-white rounded-t-xl'
+              ? 'border-rose-600 text-rose-700 bg-white rounded-t-lg sm:rounded-t-xl'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <ArrowUpRight className="w-4 h-4" />
+          <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 h-4" />
           <span>Realisasi Kas Keluar ({expensesList.length})</span>
         </button>
       </div>
@@ -511,15 +511,15 @@ export const BudgetExpensesView: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-3 px-4">Nama Pos Anggaran</th>
-                  <th className="py-3 px-4">Kategori</th>
-                  <th className="py-3 px-4 text-center">Volume & Satuan</th>
-                  <th className="py-3 px-4 text-right">Harga Satuan</th>
-                  <th className="py-3 px-4 text-right">Total Anggaran</th>
-                  <th className="py-3 px-4 text-right">Realisasi Kas</th>
-                  <th className="py-3 px-4 text-center">Serapan</th>
-                  <th className="py-3 px-4 text-center">Aksi</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[9px] sm:text-[10px]">
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4">Nama Pos Anggaran</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4">Kategori</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Volume & Satuan</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Harga Satuan</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Total Anggaran</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Realisasi Kas</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Serapan</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -531,34 +531,34 @@ export const BudgetExpensesView: React.FC = () => {
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-4">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4">
                         <span className="font-bold text-midnight block">{b.name}</span>
                         {b.notes && <span className="text-[10px] text-slate-400">{b.notes}</span>}
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4">
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full">
                           {b.category}
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-center font-medium text-slate-700">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center font-medium text-slate-700">
                         {b.volume} {b.unit}
                       </td>
 
-                      <td className="py-3 px-4 text-right text-slate-600 font-medium">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-right text-slate-600 font-medium">
                         {formatRupiah(b.unit_price)}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-extrabold text-midnight">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-right font-extrabold text-midnight">
                         {formatRupiah(b.total_budget)}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-bold text-rose-700">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-right font-bold text-rose-700">
                         {formatRupiah(spent)}
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           rate > 100 ? 'bg-rose-100 text-rose-800' : 'bg-teal-50 text-teal-deep'
                         }`}>
@@ -566,28 +566,28 @@ export const BudgetExpensesView: React.FC = () => {
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleOpenAddExpense(b.id)}
                             className="p-1.5 text-slate-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition"
                             title="Catat Realisasi untuk Pos Ini"
                           >
-                            <Plus className="w-4 h-4" />
+                            <Plus className="w-3.5 h-3.5 sm:w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenEditBudget(b)}
                             className="p-1.5 text-slate-400 hover:text-midnight rounded-lg hover:bg-slate-100 transition"
                             title="Edit Pos Anggaran"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-3.5 h-3.5 sm:w-4 h-4" />
                           </button>
                           <button
                             onClick={() => deleteBudgetItem(b.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
                             title="Hapus Pos Anggaran"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -606,13 +606,13 @@ export const BudgetExpensesView: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-3 px-4">ID & Tanggal</th>
-                  <th className="py-3 px-4">Nama Pengeluaran</th>
-                  <th className="py-3 px-4">Kategori & Bukti</th>
-                  <th className="py-3 px-4 text-right">Nominal Aktual</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-center">Tindakan</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[9px] sm:text-[10px]">
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4">ID & Tanggal</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4">Nama Pengeluaran</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4">Kategori & Bukti</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Nominal Aktual</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Status</th>
+                  <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Tindakan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -621,17 +621,17 @@ export const BudgetExpensesView: React.FC = () => {
 
                   return (
                     <tr key={e.id} className={`hover:bg-slate-50/80 transition ${isVoid ? 'bg-rose-50/20' : ''}`}>
-                      <td className="py-3 px-4">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4">
                         <span className="font-mono font-bold text-slate-700 block">{e.id}</span>
                         <span className="text-[10px] text-slate-400">{formatDateId(e.date)}</span>
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4">
                         <span className="font-bold text-midnight block">{e.title}</span>
                         {e.notes && <span className="text-[10px] text-slate-400">{e.notes}</span>}
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4">
                         <div className="flex items-center gap-1.5">
                           <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded font-semibold text-[10px]">
                             {e.category}
@@ -642,13 +642,13 @@ export const BudgetExpensesView: React.FC = () => {
                         </div>
                       </td>
 
-                      <td className="py-3 px-4 text-right font-extrabold text-sm">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-right font-extrabold text-xs sm:text-sm">
                         <span className={isVoid ? 'line-through text-slate-400' : 'text-rose-700'}>
                           {formatRupiah(e.amount)}
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
                         {isVoid ? (
                           <div className="inline-flex flex-col items-center">
                             <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">
@@ -667,7 +667,7 @@ export const BudgetExpensesView: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
                         {!isVoid ? (
                           <button
                             onClick={() => {
@@ -677,7 +677,7 @@ export const BudgetExpensesView: React.FC = () => {
                             className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
                             title="Batalkan Pengeluaran (Void)"
                           >
-                            <Ban className="w-4 h-4" />
+                            <Ban className="w-3.5 h-3.5 sm:w-4 h-4" />
                           </button>
                         ) : (
                           <span className="text-slate-300 text-xs">-</span>
