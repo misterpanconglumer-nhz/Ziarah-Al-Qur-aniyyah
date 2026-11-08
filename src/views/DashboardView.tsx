@@ -129,7 +129,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       {/* Hero Welcome & Quick Actions */}
       <div className="bg-gradient-to-r from-midnight via-midnight-800 to-teal-deep rounded-2xl sm:rounded-3xl p-4 sm:p-7 text-white shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 opacity-5 sm:opacity-10 pointer-events-none flex items-center pr-4 sm:pr-8">
-          <img src="/brand/logo-symbol-dark.svg" alt="watermark" className="w-44 sm:w-80 h-44 sm:h-80 object-contain" />
+          <img src="/brand/logo-official.png" alt="watermark" className="w-44 sm:w-80 h-44 sm:h-80 object-contain" />
         </div>
 
         <div className="relative z-10 max-w-2xl">

@@ -553,7 +553,7 @@ Terima kasih atas keikutsertaan Anda. Semoga berkah dan mabrur. Aamiin.`;
             <div className="bg-gradient-to-br from-midnight to-midnight-800 text-white rounded-3xl p-5 shadow-md space-y-4">
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <img src="/brand/logo-symbol-dark.svg" alt="Logo" className="w-6 h-6 object-contain" />
+                  <img src="/brand/logo-official.png" alt="Logo" className="w-6 h-6 object-contain" />
                   <span className="text-xs font-bold text-teal-soft">ZIARAH 2027</span>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 bg-white/10 text-slate-200 rounded-full font-mono font-bold">
@@ -820,9 +820,9 @@ Terima kasih atas keikutsertaan Anda. Semoga berkah dan mabrur. Aamiin.`;
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-2 border-midnight pb-4">
                   <div className="flex items-center gap-3">
                     <img
-                      src="/brand/logo-symbol-light.svg"
+                      src="/brand/logo-official.png"
                       alt="Logo Ziarah"
-                      className="w-12 h-12 object-contain shrink-0"
+                      className="w-16 h-16 sm:w-20 sm:h-20 object-contain shrink-0 drop-shadow-sm"
                     />
                     <div>
                       <h3 className="font-extrabold text-sm sm:text-base text-midnight leading-tight">

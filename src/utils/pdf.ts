@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Bus, BusSeat, Jamaah, BusStaff, Rombongan, RombonganFinancialSummary, PaymentReceipt } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoBase64';
 
 /**
  * Export Official 59-Seat Visual Bus Layout PDF (Format Cetak A4 Standar 2-3 Pariwisata)
@@ -649,20 +650,27 @@ export function exportPaymentReceiptPDF(receipt: PaymentReceipt) {
   doc.roundedRect(8, 8, 194, 132, 2, 2, 'S');
 
   // 2. Header Section
+  // Official Logo of Pondok Pesantren & Ziarah Kubro
+  try {
+    doc.addImage(OFFICIAL_LOGO_BASE64, 'PNG', 12, 10, 18, 18);
+  } catch (err) {
+    console.warn('Could not add logo to PDF:', err);
+  }
+
   // Kop Pesantren & Panitia
   doc.setTextColor(20, 43, 74);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text("PANITIA ZIARAH AKBAR 2027", 14, 16);
+  doc.setFontSize(12.5);
+  doc.text("PANITIA ZIARAH AKBAR 2027", 33, 16);
 
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(35, 109, 120);
-  doc.text("PONDOK PESANTREN AL-QUR'ANIYYAH", 14, 21);
+  doc.text("PONDOK PESANTREN AL-QUR'ANIYYAH", 33, 21);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text("Sekretariat Pengelola & Bendahara Kegiatan Ziarah Akbar", 14, 25);
+  doc.text("Sekretariat Pengelola & Bendahara Kegiatan Ziarah Akbar", 33, 25.5);
 
   // Right Header: Kwitansi Badge & Meta
   doc.setFillColor(20, 43, 74);
