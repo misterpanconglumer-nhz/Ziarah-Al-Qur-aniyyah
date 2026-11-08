@@ -6,6 +6,7 @@ import {
   Bus,
   Grid,
   CreditCard,
+  Receipt,
   PieChart,
   FileText,
   Settings,
@@ -19,6 +20,7 @@ export type MainNavId =
   | 'buses'
   | 'seats'
   | 'payments'
+  | 'receipts'
   | 'budget'
   | 'reports'
   | 'settings';
@@ -43,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'buses', label: 'Data Bus & Petugas', icon: Bus },
     { id: 'seats', label: 'Denah Kursi', icon: Grid },
     { id: 'payments', label: 'Pembayaran', icon: CreditCard },
+    { id: 'receipts', label: 'Kwitansi Pembayaran', icon: Receipt },
     { id: 'budget', label: 'Anggaran & Pengeluaran', icon: PieChart },
     { id: 'reports', label: 'Laporan', icon: FileText },
     { id: 'settings', label: 'Pengaturan', icon: Settings }

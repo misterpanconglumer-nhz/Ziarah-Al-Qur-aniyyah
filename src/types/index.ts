@@ -178,4 +178,20 @@ export interface RombonganFinancialSummary {
   paymentStatus: RombonganPaymentStatus;
   status: string;
   validPaymentsCount: number;
+
+export interface PaymentReceipt {
+  id: string; // e.g. RCP-0001
+  receipt_number: string; // e.g. KWT-2027-0001
+  payment_date: string; // YYYY-MM-DD
+  participant_name: string;
+  rombongan_name?: string;
+  phone?: string;
+  amount: number;
+  terbilang: string;
+  description: string;
+  payment_method: 'Tunai' | 'Transfer Bank' | 'QRIS' | 'Lainnya';
+  received_by: string;
+  notes?: string;
+  created_at: string;
+
 }

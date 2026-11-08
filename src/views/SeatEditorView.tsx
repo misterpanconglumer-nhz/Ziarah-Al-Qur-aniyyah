@@ -10,6 +10,10 @@ import {
   FileDown,
   FileText,
   UserMinus, 
+  ArrowRightLeft,
+  AlertTriangle,
+  CheckCircle2,
+  UserCheck,
   X, 
   Search, 
   Sliders, 
@@ -40,6 +44,8 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     saveCustomBusLayout,
     updateBusLayoutDimensions,
     standardizeBusTo59Seats,
+    moveJamaahSeat,
+    getJamaahSeatAssignment,
     showToast 
   } = useApp();
 
@@ -75,6 +81,30 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const [isCopyingImage, setIsCopyingImage] = useState(false);
   const [hasCopiedImage, setHasCopiedImage] = useState(false);
   
+  // Pindah Kursi (Transfer) Modal State
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferJamaahId, setTransferJamaahId] = useState<string>('');
+  const [transferTargetBusId, setTransferTargetBusId] = useState<string>(selectedBusId);
+  const [transferTargetSeatNumber, setTransferTargetSeatNumber] = useState<string>('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  // Seat Conflict Alert State (Peringatan Anti Double-Seat)
+  const [seatConflictAlert, setSeatConflictAlert] = useState<{
+    jamaah: Jamaah;
+    existingBusName: string;
+    existingSeatNumber: string;
+  } | null>(null);
+
+  // Detail Modal for Occupied Seat
+  const [occupiedSeatModal, setOccupiedSeatModal] = useState<BusSeat | null>(null);
+
+  // Target bus available empty seats for Pindah Kursi modal
+  const transferAvailableSeats = useMemo(() => {
+    if (!transferTargetBusId) return [];
+    const targetSeats = getSeatsForBus(transferTargetBusId);
+    return targetSeats.filter(s => s.role === 'empty' && !s.occupant_id);
+  }, [transferTargetBusId, getSeatsForBus]);
+
   // Row & Column Configuration Modal State
   const [isDimensionModalOpen, setIsDimensionModalOpen] = useState(false);
   const [configRows, setConfigRows] = useState<number>(13);
@@ -173,15 +203,23 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
   const emptyCount = Math.max(0, (selectedBus?.capacity || 59) - filledCount);
 
   const handleSeatClick = (seat: BusSeat) => {
-    if (seat.role === 'driver' || seat.role === 'door') {
+    if (seat.role === 'driver' || seat.role === 'door' || seat.role === 'facility') {
       setEditingCellSeat(seat);
       setCellEditNumber(seat.seat_number);
       setCellEditRole(seat.role);
       return;
     }
+
+    // Jika kursi sudah terisi, buka modal aksi khusus kursi terisi (Pindah / Kosongkan)
+    if (seat.occupant_name && seat.role !== 'empty') {
+      setOccupiedSeatModal(seat);
+      return;
+    }
+
+    // Kursi kosong: buka modal pilih peserta
     setSelectedSeat(seat);
     setOccupantSearch('');
-    setManualNameInput(seat.occupant_name || '');
+    setManualNameInput('');
   };
 
   const handleAssignManualName = async (e: React.FormEvent) => {
@@ -279,19 +317,73 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     setEditingCellSeat(null);
   };
 
-  const handleAssignPerson = async (person: Jamaah | { id: string; name: string; role: 'tour_leader' | 'pembimbing' }) => {
+  const handleAssignPerson = async (
+    person: Jamaah | { id: string; name: string; role: 'tour_leader' | 'pembimbing' },
+    allowMove: boolean = false
+  ) => {
     if (!selectedSeat || !selectedBus) return;
 
     const role = 'role' in person ? person.role : 'jamaah';
-    await assignSeat(
+
+    // VALIDASI ANTI DOUBLE-SEAT: Cek apakah peserta sudah memiliki kursi di armada bus manapun
+    if (!allowMove && role === 'jamaah') {
+      const existing = getJamaahSeatAssignment(person.id);
+      if (existing && existing.seatNumber) {
+        const isSameSeat = existing.busId === selectedBus.id &&
+          (existing.seatNumber === selectedSeat.seat_number || existing.seatNumber.replace(/^SEAT\s*/i, '').trim() === selectedSeat.seat_number.replace(/^SEAT\s*/i, '').trim());
+
+        if (!isSameSeat) {
+          // Tampilkan notifikasi peringatan sesuai ketentuan
+          setSeatConflictAlert({
+            jamaah: person as Jamaah,
+            existingBusName: existing.busName || 'Bus Lain',
+            existingSeatNumber: existing.seatNumber
+          });
+          return;
+        }
+      }
+    }
+
+    const res = await assignSeat(
       selectedBus.id,
       selectedSeat.seat_number,
       person.id,
       person.name,
-      role
+      role,
+      { allowMove }
     );
 
-    setSelectedSeat(null);
+    if (res.success) {
+      setSelectedSeat(null);
+      setSeatConflictAlert(null);
+    }
+  };
+
+  const handleConfirmMoveConflict = async () => {
+    if (!seatConflictAlert || !selectedSeat || !selectedBus) return;
+    await handleAssignPerson(seatConflictAlert.jamaah, true);
+    setSeatConflictAlert(null);
+  };
+
+  const handleExecuteTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferJamaahId || !transferTargetBusId || !transferTargetSeatNumber) {
+      showToast('Harap pilih peserta, bus tujuan, dan nomor kursi tujuan!', 'warning');
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const res = await moveJamaahSeat(transferJamaahId, transferTargetBusId, transferTargetSeatNumber);
+      if (res.success) {
+        setIsTransferModalOpen(false);
+        setOccupiedSeatModal(null);
+        setTransferJamaahId('');
+        setTransferTargetSeatNumber('');
+      }
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   const handleFreeCurrentSeat = async () => {
@@ -347,32 +439,54 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
     }
   };
 
-  // Helper to render one seat in official 59 view
+  // Helper to render one seat in official 59 view dengan status warna visual:
+  // Hijau: Kursi tersedia • Merah: Kursi sudah terisi • Abu-abu: Fasilitas/pintu/supir
   const renderOfficialSeatBox = (num: number, className: string = '') => {
     const seat = getSeatByNumber(num);
     const occupant = seat.occupant_name || '';
+    const isDriverOrDoor = seat.role === 'driver' || seat.role === 'door' || seat.role === 'facility';
+    const isOccupied = Boolean(occupant && !isDriverOrDoor && seat.role !== 'empty');
 
     return (
       <div
         key={num}
         onClick={() => handleSeatClick(seat)}
-        className={`border border-slate-700 bg-white rounded-xs overflow-hidden cursor-pointer hover:border-midnight-500 transition shadow-xs group select-none flex flex-col justify-between ${className}`}
-        title={`Seat ${num}: ${occupant || 'Kosong'} (Klik untuk kelola)`}
+        className={`border-2 rounded-xs overflow-hidden cursor-pointer transition shadow-xs group select-none flex flex-col justify-between ${
+          isDriverOrDoor
+            ? 'border-slate-400 bg-slate-200 text-slate-600'
+            : isOccupied
+            ? 'border-rose-500 bg-rose-50/50 hover:border-rose-700'
+            : 'border-emerald-500 bg-emerald-50/40 hover:border-emerald-600'
+        } ${className}`}
+        title={`SEAT ${num}: ${isDriverOrDoor ? 'Fasilitas Bus' : isOccupied ? `TERISI (${occupant})` : 'TERSEDIA (Kosong)'} - Klik untuk kelola`}
       >
-        {/* Top Header: SEAT X (Theme Midnight/Blue Soft Tint) */}
-        <div className="bg-[#E1EBF5] border-b border-slate-700 py-0.5 px-1 text-center font-bold text-[9px] sm:text-[10px] text-midnight-900 tracking-wider">
-          SEAT {num}
+        {/* Top Header: Status Bar Warna Merah / Hijau / Abu-abu */}
+        <div className={`py-0.5 px-1 text-center font-extrabold text-[9px] sm:text-[10px] tracking-wider flex items-center justify-between border-b ${
+          isDriverOrDoor
+            ? 'bg-slate-300 border-slate-400 text-slate-700'
+            : isOccupied
+            ? 'bg-rose-600 border-rose-600 text-white'
+            : 'bg-emerald-600 border-emerald-600 text-white'
+        }`}>
+          <span>SEAT {num}</span>
+          <span className={`text-[8px] font-bold uppercase px-1 rounded ${
+            isDriverOrDoor ? 'bg-slate-400 text-white' : isOccupied ? 'bg-rose-800 text-rose-100' : 'bg-emerald-800 text-emerald-100'
+          }`}>
+            {isDriverOrDoor ? 'Non-Aktif' : isOccupied ? 'Terisi' : 'Kosong'}
+          </span>
         </div>
 
         {/* Occupant Full Name */}
-        <div className="p-1 min-h-[38px] sm:min-h-[44px] flex items-center justify-center text-center bg-white">
-          {occupant ? (
+        <div className={`p-1 min-h-[38px] sm:min-h-[44px] flex items-center justify-center text-center ${
+          isOccupied ? 'bg-white' : 'bg-emerald-50/20'
+        }`}>
+          {isOccupied ? (
             <span className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] leading-tight uppercase line-clamp-2 px-0.5">
               {occupant}
             </span>
           ) : (
-            <span className="text-[10px] text-slate-300 font-semibold group-hover:text-midnight transition">
-              -
+            <span className="text-[10px] text-emerald-700 font-bold group-hover:underline transition flex items-center gap-0.5">
+              <span>+ Tersedia</span>
             </span>
           )}
         </div>
@@ -530,6 +644,37 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
             <span className="hidden md:inline">Rekap Tabel</span>
           </button>
         </div>
+      </div>
+
+      {/* Visual Status Legend & Anti Double-Seat Toolbar (Hidden on print) */}
+      <div className="no-print bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-xs font-bold">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-emerald-500 border border-emerald-600 inline-block shadow-xs" />
+            <span className="text-emerald-800">Hijau: Kursi Tersedia</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-rose-500 border border-rose-600 inline-block shadow-xs" />
+            <span className="text-rose-800">Merah: Kursi Terisi</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-slate-300 border border-slate-400 inline-block shadow-xs" />
+            <span className="text-slate-600">Abu-abu: Fasilitas / Supir</span>
+          </span>
+        </div>
+
+        <button
+          onClick={() => {
+            setTransferJamaahId('');
+            setTransferTargetBusId(selectedBus.id);
+            setTransferTargetSeatNumber('');
+            setIsTransferModalOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-sm ml-auto sm:ml-0"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5 text-teal-soft" />
+          <span>Pindah Kursi Peserta</span>
+        </button>
       </div>
 
       {/* View Switcher & Stats (Hidden on print) */}
@@ -922,15 +1067,19 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 <div className="max-h-52 overflow-y-auto space-y-1.5 divide-y divide-slate-100 border border-slate-200 rounded-xl p-1">
                   {candidateJamaah.slice(0, 30).map(j => {
                     const isAlreadyOnThisSeat = j.id === selectedSeat.occupant_id;
-                    const hasOtherSeat = j.seat_number && !isAlreadyOnThisSeat;
+                    const existingAssignment = getJamaahSeatAssignment(j.id);
+                    const hasOtherSeat = Boolean(existingAssignment && existingAssignment.seatNumber && !isAlreadyOnThisSeat);
 
                     return (
                       <button
                         key={j.id}
+                        type="button"
                         onClick={() => handleAssignPerson(j)}
                         className={`w-full p-2.5 text-left rounded-lg transition flex items-center justify-between text-xs ${
                           isAlreadyOnThisSeat
                             ? 'bg-teal-50 border border-teal-200 text-teal-deep'
+                            : hasOtherSeat
+                            ? 'bg-amber-50/50 hover:bg-amber-50 border border-amber-200/80 text-amber-900'
                             : 'hover:bg-slate-50'
                         }`}
                       >
@@ -938,15 +1087,19 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                           <p className="font-bold text-slate-800">{j.name}</p>
                           <p className="text-[10px] text-slate-400">
                             {j.id} • {j.rombongan_name || 'Umum'}
-                            {hasOtherSeat && (
-                              <span className="text-amber-600 font-semibold ml-1">
-                                (Saat ini di {j.bus_name} Kursi {j.seat_number})
+                            {hasOtherSeat && existingAssignment && (
+                              <span className="text-amber-700 font-bold ml-1.5 block sm:inline">
+                                ⚠️ Sudah di ${existingAssignment.busName} (${existingAssignment.seatNumber})
                               </span>
                             )}
                           </p>
                         </div>
-                        <span className="px-2 py-1 bg-midnight text-white text-[10px] font-bold rounded-lg shrink-0">
-                          {isAlreadyOnThisSeat ? 'Terpilih' : 'Pilih'}
+                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg shrink-0 ${
+                          hasOtherSeat
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-emerald-600 text-white'
+                        }`}>
+                          {hasOtherSeat ? 'Pindah ke Sini' : 'Pilih Kursi'}
                         </span>
                       </button>
                     );
@@ -975,6 +1128,307 @@ export const SeatEditorView: React.FC<SeatEditorViewProps> = ({ initialBusId }) 
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: KURSI TERISI (PILIH PINDAH KURSI ATAU KOSONGKAN)                  */}
+      {/* ========================================================================= */}
+      {occupiedSeatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-4 bg-rose-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                <h3 className="font-extrabold text-sm">
+                  Kursi Terisi • {occupiedSeatModal.seat_number} ({selectedBus?.name})
+                </h3>
+              </div>
+              <button
+                onClick={() => setOccupiedSeatModal(null)}
+                className="p-1 text-rose-200 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Notice Banner */}
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold">Kursi Sudah Ditempati</strong>
+                  <p className="text-[11px] text-rose-700 mt-0.5">
+                    Kursi ini sudah ditempati peserta lain. Silakan pilih kursi yang masih tersedia jika ingin menempatkan peserta baru.
+                  </p>
+                </div>
+              </div>
+
+              {/* Occupant Details Card */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Nama Lengkap Peserta</span>
+                  <span className="text-base font-extrabold text-midnight block">{occupiedSeatModal.occupant_name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-200/80">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Peran Kursi</span>
+                    <span className="font-bold text-teal-deep">{occupiedSeatModal.occupant_role_label || 'Jamaah'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">ID Peserta</span>
+                    <span className="font-mono font-bold text-slate-700">{occupiedSeatModal.occupant_id || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    if (occupiedSeatModal.occupant_id) {
+                      setTransferJamaahId(occupiedSeatModal.occupant_id);
+                    }
+                    setTransferTargetBusId(selectedBus.id);
+                    setTransferTargetSeatNumber('');
+                    setIsTransferModalOpen(true);
+                  }}
+                  className="w-full py-2.5 px-4 bg-midnight hover:bg-midnight-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
+                >
+                  <ArrowRightLeft className="w-4 h-4 text-teal-soft" />
+                  <span>Pindahkan Peserta Ini ke Kursi Lain</span>
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      await freeSeat(selectedBus.id, occupiedSeatModal.seat_number);
+                      setOccupiedSeatModal(null);
+                    }}
+                    className="flex-1 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  >
+                    <UserMinus className="w-4 h-4" />
+                    <span>Kosongkan Kursi</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOccupiedSeatModal(null)}
+                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: PERINGATAN ANTI DOUBLE-SEAT (PESERTA SUDAH MEMILIKI KURSI)        */}
+      {/* ========================================================================= */}
+      {seatConflictAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-amber-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 bg-amber-500 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-white" />
+                <h3 className="font-extrabold text-sm">Peringatan: Peserta Sudah Memiliki Kursi</h3>
+              </div>
+              <button
+                onClick={() => setSeatConflictAlert(null)}
+                className="p-1 text-amber-100 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs space-y-2">
+                <p className="font-extrabold text-sm text-amber-950">
+                  Peserta ini sudah mendapatkan kursi pada ${seatConflictAlert.existingBusName} - ${seatConflictAlert.existingSeatNumber}. Silakan periksa kembali data penempatan kursi.
+                </p>
+                <p className="text-[11px] text-amber-800">
+                  Sesuai ketentuan, satu peserta hanya boleh mendapatkan satu kursi aktif across armada ziarah.
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Detail Peserta</span>
+                <p className="font-bold text-slate-900 text-sm">{seatConflictAlert.jamaah.name}</p>
+                <p className="text-slate-500">
+                  Kursi Saat Ini: <strong className="text-midnight">${seatConflictAlert.existingBusName} - ${seatConflictAlert.existingSeatNumber}</strong>
+                </p>
+                <p className="text-slate-500">
+                  Kursi Baru: <strong className="text-teal-deep">{selectedBus?.name} - {selectedSeat?.seat_number}</strong>
+                </p>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  onClick={() => setSeatConflictAlert(null)}
+                  className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleConfirmMoveConflict}
+                  className="flex-1 py-2.5 px-3 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <ArrowRightLeft className="w-4 h-4 text-teal-soft" />
+                  <span>Pindahkan ke Kursi Ini</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: PINDAH KURSI PESERTA (TRANSFER SEAT ANTAR BUS / KURSI)             */}
+      {/* ========================================================================= */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 bg-midnight text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-teal-soft" />
+                <h3 className="font-extrabold text-sm">Pindah Kursi Peserta</h3>
+              </div>
+              <button
+                onClick={() => setIsTransferModalOpen(false)}
+                className="p-1 text-slate-300 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteTransfer} className="p-5 space-y-4">
+              {/* Pilih Peserta yang memiliki kursi */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Pilih Peserta yang Dipindahkan *
+                </label>
+                <select
+                  value={transferJamaahId}
+                  onChange={e => {
+                    const jId = e.target.value;
+                    setTransferJamaahId(jId);
+                    const assign = getJamaahSeatAssignment(jId);
+                    if (assign?.busId) {
+                      setTransferTargetBusId(assign.busId);
+                    }
+                  }}
+                  required
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-bold text-midnight"
+                >
+                  <option value="">-- Pilih Peserta --</option>
+                  {jamaahList
+                    .filter(j => j.seat_number && j.bus_id)
+                    .map(j => (
+                      <option key={j.id} value={j.id}>
+                        {j.name} (Saat ini: {j.bus_name || j.bus_id} - {j.seat_number})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Info Kursi Asal */}
+              {transferJamaahId && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Posisi Saat Ini</span>
+                  {(() => {
+                    const assign = getJamaahSeatAssignment(transferJamaahId);
+                    return (
+                      <p className="font-extrabold text-midnight">
+                        {assign?.busName || 'Bus Asal'} • {assign?.seatNumber || '-'}
+                      </p>
+                    );
+                  })()}
+                  <span className="text-[10px] text-teal-deep block">
+                    ✓ Kursi lama akan otomatis dikosongkan setelah dipindahkan.
+                  </span>
+                </div>
+              )}
+
+              {/* Bus Tujuan */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Armada Bus Tujuan *
+                </label>
+                <select
+                  value={transferTargetBusId}
+                  onChange={e => {
+                    setTransferTargetBusId(e.target.value);
+                    setTransferTargetSeatNumber('');
+                  }}
+                  required
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-bold text-midnight"
+                >
+                  {busesList.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.operator} - {b.capacity} Kursi)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Kursi Tujuan (Hanya Kursi yang Kosong/Available!) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Pilih Nomor Kursi Kosong di Bus Tujuan *</span>
+                  <span className="text-[10px] text-emerald-700 font-bold">
+                    {transferAvailableSeats.length} Kursi Tersedia
+                  </span>
+                </label>
+                {transferAvailableSeats.length === 0 ? (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-bold text-center">
+                    ⚠️ Armada bus tujuan sudah penuh! Tidak ada kursi kosong.
+                  </div>
+                ) : (
+                  <select
+                    value={transferTargetSeatNumber}
+                    onChange={e => setTransferTargetSeatNumber(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-extrabold text-emerald-800"
+                  >
+                    <option value="">-- Pilih Kursi Kosong --</option>
+                    {transferAvailableSeats.map(s => (
+                      <option key={s.id} value={s.seat_number}>
+                        {s.seat_number} (Tersedia)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsTransferModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isTransferring || transferAvailableSeats.length === 0 || !transferTargetSeatNumber}
+                  className="px-5 py-2.5 bg-midnight hover:bg-midnight-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isTransferring ? (
+                    <span>Memindahkan...</span>
+                  ) : (
+                    <>
+                      <ArrowRightLeft className="w-4 h-4 text-teal-soft" />
+                      <span>Konfirmasi Pindah Kursi</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1248,25 +1702,25 @@ function renderSeatButton(seat: BusSeat, onClick: (seat: BusSeat) => void) {
       <div
         key={seat.id}
         onClick={() => onClick(seat)}
-        className="w-12 h-12 rounded-xl bg-amber-50 border-2 border-amber-300 border-dashed flex flex-col items-center justify-center text-amber-800 shadow-sm cursor-pointer hover:bg-amber-100 transition"
+        className="w-12 h-12 rounded-xl bg-slate-200 border-2 border-slate-400 border-dashed flex flex-col items-center justify-center text-slate-600 shadow-sm cursor-pointer hover:bg-slate-300 transition"
         title="Pintu Masuk/Keluar"
       >
         <span className="text-[9px] font-black uppercase">PINTU</span>
-        <span className="text-[8px] text-amber-600 font-bold">Door</span>
+        <span className="text-[8px] text-slate-500 font-bold">Door</span>
       </div>
     );
   }
 
-  if (seat.occupant_name) {
+  if (seat.occupant_name && seat.role !== 'empty') {
     return (
       <button
         key={seat.id}
         onClick={() => onClick(seat)}
-        className="w-14 h-12 rounded-xl bg-teal-soft border-2 border-teal-500 text-midnight flex flex-col items-center justify-center shadow-md hover:scale-105 transition px-1"
-        title={`Jamaah: ${seat.occupant_name}`}
+        className="w-14 h-12 rounded-xl bg-rose-50 border-2 border-rose-500 text-rose-900 flex flex-col items-center justify-center shadow-md hover:scale-105 transition px-1"
+        title={`Kursi Terisi: ${seat.occupant_name}`}
       >
-        <span className="text-[9px] font-extrabold">{seat.seat_number}</span>
-        <span className="text-[8px] font-bold text-midnight truncate max-w-[48px] px-0.5 leading-tight uppercase">
+        <span className="text-[9px] font-extrabold text-rose-700">{seat.seat_number}</span>
+        <span className="text-[8px] font-bold text-slate-900 truncate max-w-[48px] px-0.5 leading-tight uppercase">
           {seat.occupant_name.split(' ')[0]}
         </span>
       </button>
@@ -1277,11 +1731,11 @@ function renderSeatButton(seat: BusSeat, onClick: (seat: BusSeat) => void) {
     <button
       key={seat.id}
       onClick={() => onClick(seat)}
-      className="w-14 h-12 rounded-xl bg-white border-2 border-slate-300 text-slate-600 hover:border-teal-deep hover:text-teal-deep flex flex-col items-center justify-center shadow-sm hover:scale-105 transition"
-      title="Kursi Kosong - Klik untuk isi"
+      className="w-14 h-12 rounded-xl bg-emerald-50/50 border-2 border-emerald-500 text-emerald-800 hover:bg-emerald-100 flex flex-col items-center justify-center shadow-sm hover:scale-105 transition"
+      title="Kursi Tersedia - Klik untuk isi"
     >
       <span className="text-[9px] font-bold">{seat.seat_number}</span>
-      <span className="text-[8px] text-slate-300 font-semibold">Kosong</span>
+      <span className="text-[8px] text-emerald-700 font-bold">+ Tersedia</span>
     </button>
   );
 }

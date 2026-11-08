@@ -15,7 +15,8 @@ import {
   ActivitySettings,
   DuplicateStatus,
   DuplicateCheckResult,
-  SeatRole
+  SeatRole,
+  PaymentReceipt
 } from '../types';
 import { supabase, isSupabaseConfigured, checkDatabaseConnection, DatabaseStatusInfo } from '../lib/supabase';
 import {
@@ -93,9 +94,20 @@ interface AppContextType {
   assignBusStaff: (busId: string, staff: Omit<BusStaff, 'id'>) => Promise<void>;
   removeBusStaff: (busId: string, staffId: string) => Promise<void>;
 
+  // Standalone Receipts / Kwitansi Pembayaran (Terpisah dari laporan utama)
+  receiptsList: PaymentReceipt[];
+  addReceipt: (data: Omit<PaymentReceipt, 'id' | 'receipt_number' | 'created_at'>) => Promise<PaymentReceipt>;
+  updateReceipt: (id: string, data: Partial<PaymentReceipt>) => Promise<void>;
+  deleteReceipt: (id: string) => Promise<void>;
+  generateNextReceiptNumber: () => string;
+
+  // Anti-Double Seat & Seat Transfer
+  moveJamaahSeat: (jamaahId: string, toBusId: string, toSeatNumber: string) => Promise<{ success: boolean; message: string }>;
+  getJamaahSeatAssignment: (jamaahId: string) => { busId?: string; busName?: string; seatNumber?: string } | null;
+
   // Seat Assignments & Bus Layout (Row & Column)
   getSeatsForBus: (busId: string) => BusSeat[];
-  assignSeat: (busId: string, seatNumber: string, occupantId: string, occupantName: string, role?: 'jamaah' | 'tour_leader' | 'pembimbing') => Promise<{ success: boolean; error?: string }>;
+  assignSeat: (busId: string, seatNumber: string, occupantId: string, occupantName: string, role?: 'jamaah' | 'tour_leader' | 'pembimbing', options?: { allowMove?: boolean }) => Promise<{ success: boolean; error?: string; existingBusName?: string; existingSeatNumber?: string }>;
   freeSeat: (busId: string, seatNumber: string) => Promise<{ success: boolean; error?: string }>;
   saveCustomBusLayout: (busId: string, seats: BusSeat[]) => Promise<void>;
   updateBusLayoutDimensions: (busId: string, totalRows: number, totalCols: number) => Promise<{ success: boolean; newSeatsCount: number }>;
@@ -182,6 +194,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expensesList, setExpensesList] = useState<ExpenseTransaction[]>(() => cachedData?.expenses || DEMO_EXPENSES);
 
   // Seat layout cache
+  // Standalone Receipts state (completely isolated from main payments & expenses)
+  const [receiptsList, setReceiptsList] = useState<PaymentReceipt[]>(() => {
+    try {
+      const cached = localStorage.getItem('ziarah_payment_receipts_v1');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return [];
+  });
+
   const [busSeatsMap, setBusSeatsMap] = useState<Record<string, BusSeat[]>>(() => {
     const initialSeats: Record<string, BusSeat[]> = {};
     DEMO_BUSES.forEach(b => {
@@ -298,6 +319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (bgRes.data) setBudgetList(bgRes.data);
       if (expRes.data) setExpensesList(expRes.data);
 
+
       // Load rombongan payments
       let loadedRpy: RombonganPaymentTransaction[] = [];
       try {
@@ -331,6 +353,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (err) {
         console.warn('Error loading rombongan_payments:', err);
+
+
+
+      // Load receipts from dedicated Supabase table if available, or fallback to activity_settings.notes
+      if (isOnlineDb && supabase) {
+        try {
+          const { data: recData, error: recErr } = await supabase.from('payment_receipts').select('*').order('created_at', { ascending: false });
+          if (!recErr && recData && recData.length > 0) {
+            setReceiptsList(recData);
+            try { localStorage.setItem('ziarah_payment_receipts_v1', JSON.stringify(recData)); } catch {}
+          } else if (stgRes.data?.notes) {
+            try {
+              const parsed = JSON.parse(stgRes.data.notes);
+              if (Array.isArray(parsed.saved_receipts)) {
+                setReceiptsList(parsed.saved_receipts);
+                try { localStorage.setItem('ziarah_payment_receipts_v1', JSON.stringify(parsed.saved_receipts)); } catch {}
+              }
+            } catch {}
+          }
+        } catch {}
+
       }
 
       // Synchronize busSeatsMap with jamaah & staff assignments
@@ -979,33 +1022,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     seatNumber: string,
     occupantId: string,
     occupantName: string,
-    role: 'jamaah' | 'tour_leader' | 'pembimbing' = 'jamaah'
+    role: 'jamaah' | 'tour_leader' | 'pembimbing' = 'jamaah',
+    options?: { allowMove?: boolean }
   ) => {
     const currentSeats = getSeatsForBus(busId);
+    const targetBus = busesList.find(b => b.id === busId);
+    const normSeatNumber = seatNumber.replace(/^SEAT\s*/i, '').trim();
 
-    // Rule: Cegah satu orang menempati 2 kursi sekaligus di bus manapun
-    Object.keys(busSeatsMap).forEach(bId => {
-      busSeatsMap[bId] = busSeatsMap[bId].map(seat => {
-        if (seat.occupant_id === occupantId) {
+    // 1. VALIDASI KURSI: Kursi yang sudah terisi tidak dapat dipilih kembali oleh orang lain
+    const existingOccupantInTargetSeat = currentSeats.find(s => {
+      const sNorm = s.seat_number.replace(/^SEAT\s*/i, '').trim();
+      return (s.seat_number === seatNumber || sNorm === normSeatNumber) &&
+             s.occupant_id && s.occupant_id !== occupantId &&
+             s.role !== 'empty';
+    });
+
+    if (existingOccupantInTargetSeat) {
+      const msg = 'Kursi ini sudah ditempati peserta lain. Silakan pilih kursi yang masih tersedia.';
+      showToast(msg, 'error');
+      return { success: false, error: msg };
+    }
+
+    // 2. VALIDASI PESERTA: Setiap peserta hanya dapat memiliki satu seat aktif
+    if (!options?.allowMove && role === 'jamaah') {
+      const existingAssignment = getJamaahSeatAssignment(occupantId);
+      if (existingAssignment && existingAssignment.seatNumber) {
+        const isSameSeat = existingAssignment.busId === busId &&
+          (existingAssignment.seatNumber === seatNumber || existingAssignment.seatNumber.replace(/^SEAT\s*/i, '').trim() === normSeatNumber);
+
+        if (!isSameSeat) {
+          const msg = `Peserta ini sudah mendapatkan kursi pada ${existingAssignment.busName} - ${existingAssignment.seatNumber}. Silakan periksa kembali data penempatan kursi.`;
+          showToast(msg, 'warning');
           return {
-            ...seat,
-            role: 'empty',
-            occupant_id: undefined,
-            occupant_name: undefined,
-            occupant_role_label: undefined
+            success: false,
+            error: msg,
+            existingBusName: existingAssignment.busName,
+            existingSeatNumber: existingAssignment.seatNumber
           };
         }
-        return seat;
-      });
+      }
+    }
+
+    // Kosongkan kursi lama peserta di bus lain jika allowMove aktif
+    Object.keys(busSeatsMap).forEach(bId => {
+      if (bId !== busId || options?.allowMove) {
+        busSeatsMap[bId] = busSeatsMap[bId].map(seat => {
+          if (seat.occupant_id === occupantId) {
+            return {
+              ...seat,
+              role: 'empty' as const,
+              occupant_id: undefined,
+              occupant_name: undefined,
+              occupant_role_label: undefined
+            };
+          }
+          return seat;
+        });
+      }
     });
 
     // Assign to chosen seat
-    const targetBus = busesList.find(b => b.id === busId);
     let matched = false;
     let updatedSeats = currentSeats.map(seat => {
-      const match =
-        seat.seat_number === seatNumber ||
-        seat.seat_number.replace(/^SEAT\s*/i, '') === seatNumber.replace(/^SEAT\s*/i, '');
+      const sNorm = seat.seat_number.replace(/^SEAT\s*/i, '').trim();
+      const match = seat.seat_number === seatNumber || sNorm === normSeatNumber;
       if (match) {
         matched = true;
         return {
@@ -1039,7 +1119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBusSeatsMap(prev => ({ ...prev, [busId]: updatedSeats }));
 
-    // Also update jamaah record if role is jamaah
+    // Update data jamaah di database
     if (role === 'jamaah') {
       await updateJamaah(occupantId, {
         bus_id: busId,
@@ -1763,6 +1843,202 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Pengeluaran ${expenseId} telah DIBATALKAN (VOID).`, 'warning');
   };
 
+
+  // =========================================================================
+  // STANDALONE RECEIPTS / KWITANSI PEMBAYARAN (Terpisah dari Pembayaran Utama)
+  // =========================================================================
+  const generateNextReceiptNumber = () => {
+    const currentYear = new Date().getFullYear();
+    let maxNum = 0;
+    receiptsList.forEach(r => {
+      const m = r.receipt_number.match(/(\d+)$/);
+      if (m) {
+        const val = parseInt(m[1], 10);
+        if (val > maxNum) maxNum = val;
+      }
+    });
+    const nextNum = maxNum + 1;
+    return `KWT-${currentYear}-${String(nextNum).padStart(4, '0')}`;
+  };
+
+  const addReceipt = async (data: Omit<PaymentReceipt, 'id' | 'receipt_number' | 'created_at'>) => {
+    const receiptNum = generateNextReceiptNumber();
+    const id = `RCP-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`.toUpperCase();
+    const newReceipt: PaymentReceipt = {
+      ...data,
+      id,
+      receipt_number: receiptNum,
+      created_at: new Date().toISOString()
+    };
+
+    const updated = [newReceipt, ...receiptsList];
+    setReceiptsList(updated);
+
+    try {
+      localStorage.setItem('ziarah_payment_receipts_v1', JSON.stringify(updated));
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        await supabase.from('payment_receipts').insert(newReceipt);
+      } catch {}
+
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_receipts = updated.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
+      } catch {}
+    }
+
+    showToast(`Kwitansi ${receiptNum} untuk ${newReceipt.participant_name} berhasil diterbitkan!`, 'success');
+    return newReceipt;
+  };
+
+  const updateReceipt = async (id: string, updates: Partial<PaymentReceipt>) => {
+    const updated = receiptsList.map(r => r.id === id ? { ...r, ...updates } : r);
+    setReceiptsList(updated);
+
+    try {
+      localStorage.setItem('ziarah_payment_receipts_v1', JSON.stringify(updated));
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        await supabase.from('payment_receipts').update(updates).eq('id', id);
+      } catch {}
+
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_receipts = updated.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
+      } catch {}
+    }
+
+    showToast('Kwitansi berhasil diperbarui.', 'success');
+  };
+
+  const deleteReceipt = async (id: string) => {
+    const updated = receiptsList.filter(r => r.id !== id);
+    setReceiptsList(updated);
+
+    try {
+      localStorage.setItem('ziarah_payment_receipts_v1', JSON.stringify(updated));
+    } catch {}
+
+    if (isOnlineDb && supabase) {
+      try {
+        await supabase.from('payment_receipts').delete().eq('id', id);
+      } catch {}
+
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_receipts = updated.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
+      } catch {}
+    }
+
+    showToast('Kwitansi berhasil dihapus.', 'info');
+  };
+
+  // =========================================================================
+  // ANTI DOUBLE-SEAT VALIDATION & PINDAH KURSI
+  // =========================================================================
+  const getJamaahSeatAssignment = (jamaahId: string) => {
+    // 1. Check in jamaahList
+    const jm = jamaahList.find(j => j.id === jamaahId);
+    if (jm?.bus_id && jm?.seat_number) {
+      const b = busesList.find(bus => bus.id === jm.bus_id);
+      return {
+        busId: jm.bus_id,
+        busName: b?.name || jm.bus_name || jm.bus_id,
+        seatNumber: jm.seat_number
+      };
+    }
+
+    // 2. Check across busSeatsMap
+    for (const bId of Object.keys(busSeatsMap)) {
+      const seat = busSeatsMap[bId]?.find(s => s.occupant_id === jamaahId && s.role !== 'empty');
+      if (seat) {
+        const b = busesList.find(bus => bus.id === bId);
+        return {
+          busId: bId,
+          busName: b?.name || bId,
+          seatNumber: seat.seat_number
+        };
+      }
+    }
+
+    return null;
+  };
+
+  const moveJamaahSeat = async (
+    jamaahId: string,
+    toBusId: string,
+    toSeatNumber: string
+  ) => {
+    const jm = jamaahList.find(j => j.id === jamaahId);
+    if (!jm) {
+      const msg = 'Data peserta tidak ditemukan.';
+      showToast(msg, 'error');
+      return { success: false, message: msg };
+    }
+
+    const currentAssignment = getJamaahSeatAssignment(jamaahId);
+    const fromBusId = currentAssignment?.busId || jm.bus_id;
+    const fromSeatNumber = currentAssignment?.seatNumber || jm.seat_number;
+    const fromBusName = currentAssignment?.busName || busesList.find(b => b.id === fromBusId)?.name || 'Bus Asal';
+    const toBus = busesList.find(b => b.id === toBusId);
+    const toBusName = toBus?.name || toBusId;
+
+    // Pastikan kursi tujuan masih kosong
+    const targetBusSeats = getSeatsForBus(toBusId);
+    const toNorm = toSeatNumber.replace(/^SEAT\s*/i, '').trim();
+    const isTargetOccupied = targetBusSeats.some(s => {
+      const sNorm = s.seat_number.replace(/^SEAT\s*/i, '').trim();
+      return (s.seat_number === toSeatNumber || sNorm === toNorm) &&
+             s.occupant_id && s.occupant_id !== jamaahId &&
+             s.role !== 'empty';
+    });
+
+    if (isTargetOccupied) {
+      const msg = 'Kursi ini sudah ditempati peserta lain. Silakan pilih kursi yang masih tersedia.';
+      showToast(msg, 'error');
+      return { success: false, message: msg };
+    }
+
+    // 1. Kosongkan kursi lama
+    if (fromBusId && fromSeatNumber) {
+      await freeSeat(fromBusId, fromSeatNumber);
+    }
+
+    // 2. Masukkan ke kursi baru dengan allowMove = true
+    const res = await assignSeat(toBusId, toSeatNumber, jm.id, jm.name, 'jamaah', { allowMove: true });
+    if (!res.success) {
+      return { success: false, message: res.error || 'Gagal memindahkan kursi.' };
+    }
+
+    const successMsg = `Berhasil memindahkan ${jm.name} dari ${fromBusName} (${fromSeatNumber || '-'}) ke ${toBusName} (${toSeatNumber})! Kursi lama otomatis dikosongkan.`;
+    return { success: true, message: successMsg };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1797,6 +2073,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assignBusStaff,
         removeBusStaff,
         getSeatsForBus,
+        receiptsList,
+        addReceipt,
+        updateReceipt,
+        deleteReceipt,
+        generateNextReceiptNumber,
+        moveJamaahSeat,
+        getJamaahSeatAssignment,
         assignSeat,
         freeSeat,
         saveCustomBusLayout,

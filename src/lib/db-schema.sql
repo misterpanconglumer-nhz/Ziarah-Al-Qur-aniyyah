@@ -288,3 +288,31 @@ $$;
 -- Migrasi kolom otomatis untuk tabel activity_settings (jika tabel sudah ada sebelumnya)
 ALTER TABLE activity_settings ADD COLUMN IF NOT EXISTS total_buses INTEGER DEFAULT 40;
 ALTER TABLE activity_settings ADD COLUMN IF NOT EXISTS seats_per_bus INTEGER DEFAULT 59;
+
+
+-- ============================================================================
+-- 12. PAYMENT RECEIPTS (Kwitansi Pembayaran Khusus - Terpisah dari Laporan Kas Utama)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS payment_receipts (
+  id TEXT PRIMARY KEY,
+  receipt_number TEXT NOT NULL UNIQUE,
+  payment_date DATE NOT NULL,
+  participant_name TEXT NOT NULL,
+  rombongan_name TEXT,
+  phone TEXT,
+  amount NUMERIC NOT NULL,
+  terbilang TEXT NOT NULL,
+  description TEXT NOT NULL,
+  payment_method TEXT NOT NULL DEFAULT 'Tunai',
+  received_by TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE payment_receipts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon all on payment_receipts" ON payment_receipts
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated all on payment_receipts" ON payment_receipts
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
