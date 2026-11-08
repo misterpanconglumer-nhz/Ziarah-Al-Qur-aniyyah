@@ -751,7 +751,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isOnlineDb && supabase) {
       // Strip virtual joined fields before sending to Supabase
-      const { rombongan_name, bus_name, ...jamaahDbPayload } = updated;
+      const { rombongan_name, bus_name, ...rawDbPayload } = updated;
+      const jamaahDbPayload: Record<string, any> = {
+        ...rawDbPayload,
+        // Ensure null is explicitly passed to Supabase when bus_id or seat_number is cleared
+        bus_id: (updates.bus_id === undefined && 'bus_id' in updates) || !updated.bus_id ? null : updated.bus_id,
+        seat_number: (updates.seat_number === undefined && 'seat_number' in updates) || !updated.seat_number ? null : updated.seat_number
+      };
       const { error } = await supabase.from('jamaah').update(jamaahDbPayload).eq('id', id);
       if (error) {
         showToast(`Gagal update jamaah: ${error.message}`, 'error');
@@ -1134,11 +1140,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const freeSeat = async (busId: string, seatNumber: string) => {
     const currentSeats = getSeatsForBus(busId);
     let occupantIdToClear: string | undefined;
+    const normSeatNumber = seatNumber.replace(/^SEAT\s*/i, '').trim();
 
     const updatedSeats = currentSeats.map(seat => {
-      const match =
-        seat.seat_number === seatNumber ||
-        seat.seat_number.replace(/^SEAT\s*/i, '') === seatNumber.replace(/^SEAT\s*/i, '');
+      const sNorm = seat.seat_number.replace(/^SEAT\s*/i, '').trim();
+      const match = seat.seat_number === seatNumber || sNorm === normSeatNumber;
       if (match) {
         occupantIdToClear = seat.occupant_id;
         return {
@@ -1154,16 +1160,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBusSeatsMap(prev => ({ ...prev, [busId]: updatedSeats }));
 
-    if (occupantIdToClear) {
-      const jm = jamaahList.find(j => j.id === occupantIdToClear);
-      if (jm) {
-        await updateJamaah(occupantIdToClear, {
-          bus_id: undefined,
-          bus_name: undefined,
-          seat_number: undefined
-        });
+    // 1. Direct persistent clear in Supabase PostgreSQL
+    if (isOnlineDb && supabase) {
+      try {
+        if (occupantIdToClear) {
+          await supabase.from('jamaah').update({
+            bus_id: null,
+            seat_number: null,
+            updated_at: new Date().toISOString()
+          }).eq('id', occupantIdToClear);
+        }
+
+        // Also proactively clear any jamaah assigned to this exact bus and seat
+        await supabase.from('jamaah').update({
+          bus_id: null,
+          seat_number: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('bus_id', busId)
+        .or(`seat_number.eq.${seatNumber},seat_number.eq.${normSeatNumber},seat_number.eq.SEAT ${normSeatNumber}`);
+
+        // Clear staff if any
+        await supabase.from('bus_staff_assignments').delete()
+          .eq('bus_id', busId)
+          .eq('seat_number', seatNumber);
+      } catch (err) {
+        console.error('Error clearing seat in Supabase:', err);
       }
     }
+
+    // 2. Clear in in-memory state
+    setJamaahList(prev => prev.map(j => {
+      const jNorm = (j.seat_number || '').replace(/^SEAT\s*/i, '').trim();
+      const isThisSeat = j.bus_id === busId && (j.seat_number === seatNumber || jNorm === normSeatNumber);
+      if (j.id === occupantIdToClear || isThisSeat) {
+        return {
+          ...j,
+          bus_id: undefined,
+          bus_name: undefined,
+          seat_number: undefined,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return j;
+    }));
+
+    // 3. Clear in localStorage cache
+    try {
+      const cacheStr = localStorage.getItem('ziarah_cache_data_v1');
+      if (cacheStr) {
+        const c = JSON.parse(cacheStr);
+        if (Array.isArray(c.jamaah)) {
+          c.jamaah = c.jamaah.map((j: any) => {
+            const jNorm = (j.seat_number || '').replace(/^SEAT\s*/i, '').trim();
+            const isThisSeat = j.bus_id === busId && (j.seat_number === seatNumber || jNorm === normSeatNumber);
+            if (j.id === occupantIdToClear || isThisSeat) {
+              return { ...j, bus_id: null, bus_name: null, seat_number: null };
+            }
+            return j;
+          });
+          localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(c));
+        }
+      }
+    } catch {}
 
     showToast(`Kursi ${seatNumber} telah dikosongkan.`, 'info');
     return { success: true };
