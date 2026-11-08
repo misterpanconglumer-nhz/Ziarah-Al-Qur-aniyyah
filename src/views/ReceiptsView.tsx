@@ -52,7 +52,7 @@ export const ReceiptsView: React.FC = () => {
   const [amount, setAmount] = useState<number>(settings.default_bill_amount || 185000);
   const [description, setDescription] = useState('Pelunasan Pembayaran Ziarah Akbar Al-Qur\'aniyyah 2027');
   const [paymentMethod, setPaymentMethod] = useState<'Tunai' | 'Transfer Bank' | 'QRIS' | 'Lainnya'>('Tunai');
-  const [receivedBy, setReceivedBy] = useState('Bendahara Ziarah 2027');
+  const [receivedBy, setReceivedBy] = useState('Nasrullah Jamaluddin');
   const [notes, setNotes] = useState('');
 
   // Auto-complete search state
@@ -917,11 +917,18 @@ Terima kasih atas keikutsertaan Anda. Semoga berkah dan mabrur. Aamiin.`;
                     <p className="text-xs font-semibold text-slate-700 mt-0.5">
                       Penerima / Bendahara,
                     </p>
-                    <div className="h-14 flex items-center justify-center">
-                      <span className="text-[10px] text-slate-300 italic">( Tanda Tangan & Cap )</span>
+                    <div className="h-20 sm:h-24 flex items-center justify-center relative -my-1 overflow-visible">
+                      <img 
+                        src="/brand/ttd-stempel.png" 
+                        alt="Stempel dan TTD Resmi" 
+                        className="h-24 sm:h-28 max-w-[230px] object-contain drop-shadow-xs transform -rotate-1 pointer-events-none select-none" 
+                      />
                     </div>
                     <p className="text-xs font-bold text-midnight border-t border-slate-300 pt-1">
-                      ( {previewReceipt.received_by || 'Bendahara Kegiatan'} )
+                      ( {previewReceipt.received_by && previewReceipt.received_by !== 'Bendahara Ziarah 2027' ? previewReceipt.received_by : 'Nasrullah Jamaluddin'} )
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Sekretaris Ziarah 2027
                     </p>
                   </div>
                 </div>

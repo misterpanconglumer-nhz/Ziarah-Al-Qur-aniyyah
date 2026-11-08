@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Bus, BusSeat, Jamaah, BusStaff, Rombongan, RombonganFinancialSummary, PaymentReceipt } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
 import { OFFICIAL_LOGO_BASE64 } from '../assets/logoBase64';
+import { OFFICIAL_SIGNATURE_BASE64 } from '../assets/signatureBase64';
 
 /**
  * Export Official 59-Seat Visual Bus Layout PDF (Format Cetak A4 Standar 2-3 Pariwisata)
@@ -777,18 +778,30 @@ export function exportPaymentReceiptPDF(receipt: PaymentReceipt) {
   doc.setFontSize(13);
   doc.text(formatRupiah(receipt.amount), 18, footerY + 14);
 
-  // Right Signature
+  // Right Signature & Official Stamp
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
   doc.text(`Tangerang Selatan, ${formatDateId(receipt.payment_date)}`, 135, footerY + 2);
-  doc.text("Petugas Penerima / Bendahara,", 135, footerY + 6.5);
+  doc.text("Penerima / Panitia Ziarah,", 135, footerY + 6.5);
+
+  // Official Signature & Stamp Image in PDF
+  try {
+    doc.addImage(OFFICIAL_SIGNATURE_BASE64, 'PNG', 126, footerY + 7, 56, 26);
+  } catch (err) {
+    console.warn('Could not add signature image to PDF:', err);
+  }
 
   // Signature line
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.setFontSize(9);
-  doc.text(`( ${receipt.received_by || 'Bendahara Kegiatan'} )`, 135, footerY + 24);
+  doc.setFontSize(8.5);
+  const signerName = receipt.received_by && receipt.received_by !== 'Bendahara Ziarah 2027' ? receipt.received_by : 'Nasrullah Jamaluddin';
+  doc.text(`( ${signerName} )`, 135, footerY + 34);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Sekretaris Ziarah 2027", 135, footerY + 37.5);
 
   // Subtle Security Watermark / Note
   doc.setFont('helvetica', 'normal');
