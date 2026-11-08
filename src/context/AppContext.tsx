@@ -130,7 +130,7 @@ interface AppContextType {
   updateBudgetItem: (id: string, updates: Partial<BudgetItem>) => Promise<void>;
   deleteBudgetItem: (id: string) => Promise<void>;
   bulkImportBudget: (items: Omit<BudgetItem, 'id' | 'created_at'>[]) => Promise<{ success: boolean; count: number; error?: string }>;
-  syncFleetAndBudget: (totalBuses: number, seatsPerBus: number) => Promise<{ success: boolean; targetParticipants: number }>;
+  syncFleetAndBudget: (totalBuses: number, seatsPerBus: number, extraSettings?: Partial<ActivitySettings>) => Promise<{ success: boolean; targetParticipants: number }>;
   addExpense: (data: Omit<ExpenseTransaction, 'id' | 'status' | 'created_at'>) => Promise<void>;
   voidExpense: (expenseId: string, reason: string) => Promise<void>;
 
@@ -353,8 +353,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (err) {
         console.warn('Error loading rombongan_payments:', err);
-
-
+      }
 
       // Load receipts from dedicated Supabase table if available, or fallback to activity_settings.notes
       if (isOnlineDb && supabase) {
@@ -1700,18 +1699,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, count: preparedItems.length };
   };
 
-  const syncFleetAndBudget = async (totalBuses: number, seatsPerBus: number) => {
-    const newTarget = totalBuses * seatsPerBus;
+  const syncFleetAndBudget = async (
+    totalBuses: number, 
+    seatsPerBus: number, 
+    extraSettings?: Partial<ActivitySettings>
+  ) => {
+    const newTarget = extraSettings?.target_participants ?? (totalBuses * seatsPerBus);
 
-    // 1. Update settings (silent toast)
-    await updateSettings({
+    // 1. Update settings
+    const settingsPayload: Partial<ActivitySettings> = {
       total_buses: totalBuses,
       seats_per_bus: seatsPerBus,
-      target_participants: newTarget
-    }, { silent: true });
+      target_participants: newTarget,
+      ...extraSettings
+    };
+    await updateSettings(settingsPayload, { silent: true });
 
     // 2. Adjust busesList
-    let updatedBuses: Bus[] = [...busesList];
+    // Always sort naturally first so we don't accidentally slice the wrong buses!
+    const sortedBuses = sortBusesNaturally([...busesList]);
+    let updatedBuses: Bus[] = [...sortedBuses];
+
     if (updatedBuses.length < totalBuses) {
       // Need to add missing buses
       const toAdd = totalBuses - updatedBuses.length;
@@ -1732,7 +1740,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newBusesToInsert.push(newBus);
       }
       if (isOnlineDb && supabase && newBusesToInsert.length > 0) {
-        await supabase.from('buses').upsert(newBusesToInsert);
+        try {
+          await supabase.from('buses').upsert(newBusesToInsert);
+        } catch (e) {
+          console.error('Error inserting new buses into Supabase:', e);
+        }
       }
     } else if (updatedBuses.length > totalBuses) {
       // Need to remove excess buses (e.g. Bus 36-40 when reducing 40 -> 35)
@@ -1742,9 +1754,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (isOnlineDb && supabase && excessIds.length > 0) {
         // Unassign jamaah from excess buses
-        await supabase.from('jamaah').update({ bus_id: null, bus_name: null, seat_number: null }).in('bus_id', excessIds);
+        try {
+          await supabase.from('jamaah').update({ bus_id: null, bus_name: null, seat_number: null }).in('bus_id', excessIds);
+        } catch (e) {
+          console.warn('Error unassigning jamaah from excess buses:', e);
+        }
+        // Unassign staff
+        try {
+          await supabase.from('bus_staff_assignments').delete().in('bus_id', excessIds);
+        } catch (e) {}
         // Delete excess buses in bulk
-        await supabase.from('buses').delete().in('id', excessIds);
+        try {
+          await supabase.from('buses').delete().in('id', excessIds);
+        } catch (e) {
+          console.error('Error deleting excess buses:', e);
+        }
       }
     }
 
@@ -1752,13 +1776,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updatedBuses = sortBusesNaturally(updatedBuses.map(b => ({ ...b, capacity: seatsPerBus })));
     setBusesList(updatedBuses);
 
-    if (isOnlineDb && supabase) {
-      const sb = supabase;
-      await Promise.all(
-        updatedBuses.map(b =>
-          sb.from('buses').update({ capacity: seatsPerBus }).eq('id', b.id)
-        )
-      );
+    if (isOnlineDb && supabase && updatedBuses.length > 0) {
+      try {
+        const busUpsertPayload = updatedBuses.map(b => ({
+          id: b.id,
+          name: b.name,
+          operator: b.operator || 'Blue Star',
+          bus_type: b.bus_type || 'Executive Jetbus 5',
+          capacity: seatsPerBus,
+          status: b.status || 'active'
+        }));
+        await supabase.from('buses').upsert(busUpsertPayload);
+      } catch (err) {
+        console.warn('Upsert buses capacity failed, falling back to iterative update:', err);
+        for (const b of updatedBuses) {
+          try {
+            await supabase.from('buses').update({ capacity: seatsPerBus }).eq('id', b.id);
+          } catch {}
+        }
+      }
     }
 
     // 3. Adjust budget items that depend on bus count
@@ -1767,7 +1803,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newBudgetList = budgetList.map(b => {
       const u = (b.unit || '').toLowerCase();
       const n = (b.name || '').toLowerCase();
-      const isBusUnit = u.includes('bus') || n.includes('sewa bus') || n.includes('toll') || n.includes('tol') || n.includes('tips') || n.includes('parkir') || n.includes('doorprize bus') || n.includes('cetak no bus');
+      const isBusUnit = u.includes('bus') || 
+                        n.includes('sewa bus') || 
+                        n.includes('toll') || 
+                        n.includes('tol') || 
+                        n.includes('tips') || 
+                        n.includes('parkir') || 
+                        n.includes('doorprize bus') || 
+                        n.includes('cetak no bus') ||
+                        n.includes('tour leader') ||
+                        n.includes('koordinator') ||
+                        n.includes('asisten koordinator');
 
       if (isBusUnit && b.volume !== totalBuses) {
         updatedCount++;
@@ -1780,21 +1826,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         itemsToUpdateInDb.push(updatedItem);
         return updatedItem;
       }
+
+      // Check snack or participant box
+      const isSnackItem = n.includes('snack') && u.includes('box');
+      if (isSnackItem && b.volume !== newTarget) {
+        updatedCount++;
+        const newTotal = newTarget * b.unit_price;
+        const updatedItem = {
+          ...b,
+          volume: newTarget,
+          total_budget: newTotal
+        };
+        itemsToUpdateInDb.push(updatedItem);
+        return updatedItem;
+      }
+
       return b;
     });
 
     setBudgetList(newBudgetList);
 
     if (isOnlineDb && supabase && itemsToUpdateInDb.length > 0) {
-      const sb = supabase;
-      await Promise.all(
-        itemsToUpdateInDb.map(b =>
-          sb.from('budget_items').update({
-            volume: b.volume,
-            total_budget: b.total_budget
-          }).eq('id', b.id)
-        )
-      );
+      try {
+        const { error } = await supabase.from('budget_items').upsert(itemsToUpdateInDb);
+        if (error) {
+          console.warn('Budget items upsert returned error, falling back to iterative update:', error);
+          for (const b of itemsToUpdateInDb) {
+            try {
+              await supabase.from('budget_items').update({
+                volume: b.volume,
+                total_budget: b.total_budget
+              }).eq('id', b.id);
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.error('Error saving updated budget items to Supabase:', err);
+      }
     }
 
     // 4. Update cache
@@ -1802,7 +1870,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cacheStr = localStorage.getItem('ziarah_cache_data_v1');
       if (cacheStr) {
         const c = JSON.parse(cacheStr);
-        c.settings = { ...c.settings, total_buses: totalBuses, seats_per_bus: seatsPerBus, target_participants: newTarget };
+        c.settings = { 
+          ...c.settings, 
+          ...settingsPayload,
+          total_buses: totalBuses, 
+          seats_per_bus: seatsPerBus, 
+          target_participants: newTarget 
+        };
         c.buses = updatedBuses;
         c.budget = newBudgetList;
         localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(c));

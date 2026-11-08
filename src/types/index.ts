@@ -178,6 +178,7 @@ export interface RombonganFinancialSummary {
   paymentStatus: RombonganPaymentStatus;
   status: string;
   validPaymentsCount: number;
+}
 
 export interface PaymentReceipt {
   id: string; // e.g. RCP-0001

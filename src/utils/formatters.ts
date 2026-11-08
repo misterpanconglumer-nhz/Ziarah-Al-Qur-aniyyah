@@ -92,9 +92,9 @@ export function sortBusesNaturally<T extends { name: string; id: string }>(buses
     if (numA !== numB) return numA - numB;
     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   });
+}
 
-
-
+/**
  * Konversi angka nominal uang ke kalimat terbilang Bahasa Indonesia
  * Contoh: 185000 -> "Seratus Delapan Puluh Lima Ribu Rupiah"
  */
