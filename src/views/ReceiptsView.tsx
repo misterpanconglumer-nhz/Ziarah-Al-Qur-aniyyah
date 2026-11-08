@@ -3,10 +3,13 @@ import { useApp } from '../context/AppContext';
 import { PaymentReceipt } from '../types';
 import { formatRupiah, formatDateId, terbilang } from '../utils/formatters';
 import { exportPaymentReceiptPDF } from '../utils/pdf';
+import { copyReceiptImageToClipboard } from '../utils/receiptImage';
 import { 
   Receipt, 
   Plus, 
   Search, 
+  Copy,
+  Image as ImageIcon,
   Printer, 
   Download, 
   Share2, 
@@ -67,6 +70,8 @@ export const ReceiptsView: React.FC = () => {
 
   // Preview & Print Modal
   const [previewReceipt, setPreviewReceipt] = useState<PaymentReceipt | null>(null);
+  const [isCopyingImage, setIsCopyingImage] = useState(false);
+  const [hasCopiedImage, setHasCopiedImage] = useState(false);
 
   // Filter candidate jamaah for autocomplete
   const candidateJamaah = useMemo(() => {
@@ -170,6 +175,31 @@ export const ReceiptsView: React.FC = () => {
     if (!deletingReceiptId) return;
     await deleteReceipt(deletingReceiptId);
     setDeletingReceiptId(null);
+  };
+
+  
+  const handleCopyReceiptImage = async () => {
+    if (!previewReceipt) return;
+    const el = document.getElementById('receipt-printable-card');
+    if (!el) {
+      showToast('Elemen kwitansi tidak ditemukan.', 'error');
+      return;
+    }
+    setIsCopyingImage(true);
+    try {
+      const res = await copyReceiptImageToClipboard(el, previewReceipt);
+      if (res.success) {
+        setHasCopiedImage(true);
+        setTimeout(() => setHasCopiedImage(false), 3500);
+        showToast(res.message, res.method === 'clipboard' ? 'success' : 'info');
+      } else {
+        showToast(res.message, 'error');
+      }
+    } catch (e: any) {
+      showToast(`Gagal menyalin gambar kwitansi: ${e?.message || e}`, 'error');
+    } finally {
+      setIsCopyingImage(false);
+    }
   };
 
   const handleSendWhatsApp = (r: PaymentReceipt) => {
@@ -813,7 +843,7 @@ Terima kasih atas keikutsertaan Anda. Semoga berkah dan mabrur. Aamiin.`;
             </div>
 
             {/* PRINTABLE KWITANSI CONTAINER (Official Pondok Pesantren Al-Qur'aniyyah Design) */}
-            <div className="print-receipt-container p-6 sm:p-8 bg-white text-slate-900 border-2 border-midnight rounded-2xl m-3 sm:m-6 shadow-xs relative">
+            <div id="receipt-printable-card" className="print-receipt-container p-6 sm:p-8 bg-white text-slate-900 border-2 border-midnight rounded-2xl m-3 sm:m-6 shadow-xs relative">
               {/* Inner Decorative Border */}
               <div className="border border-teal-deep/30 p-4 sm:p-6 rounded-xl space-y-5">
                 {/* Header Kop Kwitansi */}
@@ -937,7 +967,32 @@ Terima kasih atas keikutsertaan Anda. Semoga berkah dan mabrur. Aamiin.`;
 
             {/* Modal Bottom Buttons */}
             <div className="no-print p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Copy Image Button */}
+                <button
+                  onClick={handleCopyReceiptImage}
+                  disabled={isCopyingImage}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm disabled:opacity-50"
+                  title="Salin gambar kwitansi untuk langsung di-paste (Ctrl+V) di WhatsApp"
+                >
+                  {isCopyingImage ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyalin Gambar...</span>
+                    </>
+                  ) : hasCopiedImage ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-200" />
+                      <span>Gambar Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-emerald-200" />
+                      <span>Salin Gambar (WA)</span>
+                    </>
+                  )}
+                </button>
+
                 {/* Print Button */}
                 <button
                   onClick={() => window.print()}
