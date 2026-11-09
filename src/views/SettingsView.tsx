@@ -62,6 +62,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
     if (settings.seats_per_bus) setSeatsPerBus(settings.seats_per_bus);
   }, [settings]);
 
+  const handleTotalBusesChange = (val: number) => {
+    const nextBuses = Math.max(1, val);
+    setTotalBuses(nextBuses);
+    setTargetParticipants(nextBuses * seatsPerBus);
+  };
+
+  const handleSeatsPerBusChange = (val: number) => {
+    const nextSeats = Math.max(10, val);
+    setSeatsPerBus(nextSeats);
+    setTargetParticipants(totalBuses * nextSeats);
+  };
+
   const calculatedTarget = totalBuses * seatsPerBus;
   const estimatedIncome = calculatedTarget * defaultBill;
 
@@ -69,12 +81,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
     e.preventDefault();
     setIsSyncing(true);
     try {
-      const res = await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus));
+      const res = await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus), {
+        activity_name: activityName,
+        activity_year: activityYear,
+        default_bill_amount: Number(defaultBill),
+        target_participants: Number(targetParticipants) || (Number(totalBuses) * Number(seatsPerBus))
+      });
       if (res?.targetParticipants) {
         setTargetParticipants(res.targetParticipants);
-      }
-      if (Number(defaultBill) !== settings.default_bill_amount) {
-        await updateSettings({ default_bill_amount: Number(defaultBill) }, { silent: true });
       }
     } finally {
       setIsSyncing(false);
@@ -93,14 +107,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    await updateSettings({
-      activity_name: activityName,
-      activity_year: activityYear,
-      default_bill_amount: Number(defaultBill),
-      target_participants: Number(targetParticipants),
-      total_buses: Number(totalBuses),
-      seats_per_bus: Number(seatsPerBus)
-    });
+    setIsSyncing(true);
+    try {
+      const res = await syncFleetAndBudget(Number(totalBuses), Number(seatsPerBus), {
+        activity_name: activityName,
+        activity_year: activityYear,
+        default_bill_amount: Number(defaultBill),
+        target_participants: Number(targetParticipants) || (Number(totalBuses) * Number(seatsPerBus))
+      });
+      if (res?.targetParticipants) {
+        setTargetParticipants(res.targetParticipants);
+      }
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -198,7 +218,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
                 <input
                   type="number"
                   value={totalBuses}
-                  onChange={e => setTotalBuses(Math.max(1, Number(e.target.value)))}
+                  onChange={e => handleTotalBusesChange(Number(e.target.value))}
                   min={1}
                   max={100}
                   required
@@ -218,7 +238,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
                 <input
                   type="number"
                   value={seatsPerBus}
-                  onChange={e => setSeatsPerBus(Math.max(10, Number(e.target.value)))}
+                  onChange={e => handleSeatsPerBusChange(Number(e.target.value))}
                   min={10}
                   max={80}
                   required
@@ -334,8 +354,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
                 required
                 className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-soft/40 font-bold"
               />
-              <span className="text-[10px] text-slate-400 mt-1 block">
-                Skala kapasitas operasional (hingga 3.000 peserta)
+              <span className="text-[10px] text-teal-600 font-semibold mt-1 block">
+                Tersinkron otomatis: {totalBuses} Bus × {seatsPerBus} Kursi = {calculatedTarget.toLocaleString('id-ID')} Jamaah
               </span>
             </div>
           </div>
@@ -380,10 +400,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenInstallModal, 
 
             <button
               type="submit"
-              className="w-full sm:w-auto px-6 py-2.5 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+              disabled={isSyncing}
+              className="w-full sm:w-auto px-6 py-2.5 bg-midnight hover:bg-midnight-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
-              <span>Simpan Pengaturan</span>
+              {isSyncing ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Menyimpan & Mensinkronkan...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Simpan & Sinkronkan Pengaturan</span>
+                </>
+              )}
             </button>
           </div>
         </form>

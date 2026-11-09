@@ -1,7 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Bus, BusSeat, Jamaah, BusStaff, Rombongan, RombonganFinancialSummary } from '../types';
+import { Bus, BusSeat, Jamaah, BusStaff, Rombongan, RombonganFinancialSummary, PaymentReceipt } from '../types';
 import { formatRupiah, formatDateId } from './formatters';
+import { OFFICIAL_LOGO_BASE64 } from '../assets/logoBase64';
+import { OFFICIAL_SIGNATURE_BASE64 } from '../assets/signatureBase64';
 
 /**
  * Export Official 59-Seat Visual Bus Layout PDF (Format Cetak A4 Standar 2-3 Pariwisata)
@@ -460,6 +462,7 @@ export function exportFinancialReportPDF(
 }
 
 /**
+
  * Export Laporan Pembayaran & Tunggakan Rombongan PDF (Landscape)
  */
 export function exportRombonganTunggakanPDF(
@@ -626,4 +629,187 @@ export function exportRombonganTunggakanPDF(
   });
 
   doc.save('Laporan_Pembayaran_dan_Tunggakan_Rombongan_Ziarah_2027.pdf');
+}
+
+/**
+ * Export Bukti Pembayaran / Kwitansi Resmi Ziarah Akbar 2027 (Format A5 Landscape)
+ */
+export function exportPaymentReceiptPDF(receipt: PaymentReceipt) {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a5' // 210 x 148 mm
+  });
+
+  // 1. Elegant Double Outer Border
+  doc.setDrawColor(20, 43, 74); // #142B4A Midnight Navy
+  doc.setLineWidth(1.0);
+  doc.roundedRect(6, 6, 198, 136, 3, 3, 'S');
+
+  doc.setDrawColor(35, 109, 120); // #236D78 Teal accent
+  doc.setLineWidth(0.3);
+  doc.roundedRect(8, 8, 194, 132, 2, 2, 'S');
+
+  // 2. Header Section
+  // Official Logo of Pondok Pesantren & Ziarah Kubro
+  try {
+    doc.addImage(OFFICIAL_LOGO_BASE64, 'PNG', 12, 10, 18, 18);
+  } catch (err) {
+    console.warn('Could not add logo to PDF:', err);
+  }
+
+  // Kop Pesantren & Panitia
+  doc.setTextColor(20, 43, 74);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.text("PANITIA ZIARAH AKBAR 2027", 33, 16);
+
+  doc.setFontSize(9.5);
+  doc.setTextColor(35, 109, 120);
+  doc.text("PONDOK PESANTREN AL-QUR'ANIYYAH", 33, 21);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Sekretariat Pengelola & Bendahara Kegiatan Ziarah Akbar", 33, 25.5);
+
+  // Right Header: Kwitansi Badge & Meta
+  doc.setFillColor(20, 43, 74);
+  doc.roundedRect(125, 11, 75, 10, 1.5, 1.5, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text("KWITANSI PEMBAYARAN", 162.5, 17.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(20, 43, 74);
+  doc.text(`No. Kwitansi : ${receipt.receipt_number}`, 126, 25.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Tanggal      : ${formatDateId(receipt.payment_date)}`, 126, 29.5);
+
+  // Divider Line
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.6);
+  doc.line(14, 32, 200, 32);
+
+  // 3. Body Content
+  let y = 41;
+  const labelX = 14;
+  const valueX = 58;
+
+  // Telah Diterima Dari
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Telah Diterima Dari", labelX, y);
+  doc.text(":", 54, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  const participantText = receipt.rombongan_name 
+    ? `${receipt.participant_name} (${receipt.rombongan_name})`
+    : receipt.participant_name;
+  doc.text(participantText, valueX, y);
+
+  // Uang Sejumlah (Nominal)
+  y += 9;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Uang Sejumlah", labelX, y);
+  doc.text(":", 54, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 43, 74);
+  doc.text(formatRupiah(receipt.amount), valueX, y);
+
+  // Terbilang Box
+  y += 7;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Terbilang", labelX, y + 2);
+  doc.text(":", 54, y + 2);
+
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(valueX, y - 2.5, 140, 8.5, 1, 1, 'FD');
+  doc.setFont('helvetica', 'bolditalic');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  const terbilangLines = doc.splitTextToSize(`# ${receipt.terbilang} #`, 136);
+  doc.text(terbilangLines, valueX + 2, y + 2.5);
+
+  // Untuk Pembayaran
+  y += 12;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Untuk Pembayaran", labelX, y);
+  doc.text(":", 54, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  const descLines = doc.splitTextToSize(receipt.description || 'Biaya Operasional Ziarah Akbar Al-Qur\'aniyyah 2027', 140);
+  doc.text(descLines, valueX, y);
+
+  // Metode Pembayaran
+  y += descLines.length > 1 ? 10 : 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Metode Pembayaran", labelX, y);
+  doc.text(":", 54, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(35, 109, 120);
+  doc.text(receipt.payment_method || 'Tunai', valueX, y);
+
+  // 4. Footer & Signature Section
+  const footerY = 106;
+
+  // Left Big Amount Badge
+  doc.setFillColor(20, 43, 74);
+  doc.roundedRect(14, footerY, 78, 18, 1.5, 1.5, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text("JUMLAH PEMBAYARAN", 18, footerY + 6);
+  doc.setFontSize(13);
+  doc.text(formatRupiah(receipt.amount), 18, footerY + 14);
+
+  // Right Signature & Official Stamp
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Tangerang Selatan, ${formatDateId(receipt.payment_date)}`, 135, footerY + 2);
+  doc.text("Penerima / Panitia Ziarah,", 135, footerY + 6.5);
+
+  // Official Signature & Stamp Image in PDF
+  try {
+    doc.addImage(OFFICIAL_SIGNATURE_BASE64, 'PNG', 126, footerY + 7, 56, 26);
+  } catch (err) {
+    console.warn('Could not add signature image to PDF:', err);
+  }
+
+  // Signature line
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(8.5);
+  const signerName = receipt.received_by && receipt.received_by !== 'Bendahara Ziarah 2027' ? receipt.received_by : 'Nasrullah Jamaluddin';
+  doc.text(`( ${signerName} )`, 135, footerY + 34);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Sekretaris Ziarah 2027", 135, footerY + 37.5);
+
+  // Subtle Security Watermark / Note
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Bukti tanda terima ini merupakan dokumen sah pembayaran Ziarah Akbar Al-Qur'aniyyah 2027.", 14, 137);
+
+  const cleanFileName = `Kwitansi_${receipt.receipt_number}_${receipt.participant_name.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+  doc.save(cleanFileName);
+
 }

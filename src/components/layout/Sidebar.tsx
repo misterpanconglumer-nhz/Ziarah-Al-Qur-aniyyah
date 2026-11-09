@@ -6,6 +6,7 @@ import {
   Bus,
   Grid,
   CreditCard,
+  Receipt,
   PieChart,
   FileText,
   Settings,
@@ -19,6 +20,7 @@ export type MainNavId =
   | 'buses'
   | 'seats'
   | 'payments'
+  | 'receipts'
   | 'budget'
   | 'reports'
   | 'settings';
@@ -43,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'buses', label: 'Data Bus & Petugas', icon: Bus },
     { id: 'seats', label: 'Denah Kursi', icon: Grid },
     { id: 'payments', label: 'Pembayaran', icon: CreditCard },
+    { id: 'receipts', label: 'Kwitansi Pembayaran', icon: Receipt },
     { id: 'budget', label: 'Anggaran & Pengeluaran', icon: PieChart },
     { id: 'reports', label: 'Laporan', icon: FileText },
     { id: 'settings', label: 'Pengaturan', icon: Settings }
@@ -59,9 +62,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-5 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
-            src="/brand/logo-symbol-dark.svg"
+            src="/brand/logo-official.png"
             alt="Logo Simbol"
-            className="w-9 h-9 object-contain"
+            className="w-10 h-10 object-contain drop-shadow-md"
           />
           <div>
             <h1 className="text-sm font-extrabold tracking-tight leading-tight">

@@ -13,6 +13,7 @@ import { RombonganView } from './views/RombonganView';
 import { BusView } from './views/BusView';
 import { SeatEditorView } from './views/SeatEditorView';
 import { PaymentsView } from './views/PaymentsView';
+import { ReceiptsView } from './views/ReceiptsView';
 import { BudgetExpensesView } from './views/BudgetExpensesView';
 import { ReportsView } from './views/ReportsView';
 import { SettingsView } from './views/SettingsView';
@@ -77,6 +78,7 @@ const AppMain: React.FC = () => {
           {activeTab === 'buses' && <BusView onNavigateToSeats={navigateToSeatsForBus} />}
           {activeTab === 'seats' && <SeatEditorView initialBusId={targetBusForSeat} />}
           {activeTab === 'payments' && <PaymentsView />}
+          {activeTab === 'receipts' && <ReceiptsView />}
           {activeTab === 'budget' && <BudgetExpensesView />}
           {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'settings' && (

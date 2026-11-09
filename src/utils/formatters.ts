@@ -93,3 +93,43 @@ export function sortBusesNaturally<T extends { name: string; id: string }>(buses
     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   });
 }
+
+/**
+ * Konversi angka nominal uang ke kalimat terbilang Bahasa Indonesia
+ * Contoh: 185000 -> "Seratus Delapan Puluh Lima Ribu Rupiah"
+ */
+export function terbilang(n: number | string | undefined | null): string {
+  if (n === undefined || n === null) return 'Nol Rupiah';
+  const num = typeof n === 'string' ? parseInt(n.replace(/[^0-9]/g, ''), 10) : Math.floor(n);
+  if (isNaN(num) || num <= 0) return 'Nol Rupiah';
+
+  const satuan = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh', 'Sebelas'];
+
+  function convert(x: number): string {
+    if (x < 12) {
+      return satuan[x];
+    } else if (x < 20) {
+      return convert(x - 10) + ' Belas';
+    } else if (x < 100) {
+      return convert(Math.floor(x / 10)) + ' Puluh ' + convert(x % 10);
+    } else if (x < 200) {
+      return 'Seratus ' + convert(x - 100);
+    } else if (x < 1000) {
+      return convert(Math.floor(x / 100)) + ' Ratus ' + convert(x % 100);
+    } else if (x < 2000) {
+      return 'Seribu ' + convert(x - 1000);
+    } else if (x < 1000000) {
+      return convert(Math.floor(x / 1000)) + ' Ribu ' + convert(x % 1000);
+    } else if (x < 1000000000) {
+      return convert(Math.floor(x / 1000000)) + ' Juta ' + convert(x % 1000000);
+    } else if (x < 1000000000000) {
+      return convert(Math.floor(x / 1000000000)) + ' Miliar ' + convert(x % 1000000000);
+    } else {
+      return convert(Math.floor(x / 1000000000000)) + ' Triliun ' + convert(x % 1000000000000);
+    }
+  }
+
+  const result = convert(num).replace(/\s+/g, ' ').trim();
+  return result ? `${result} Rupiah` : 'Nol Rupiah';
+
+}

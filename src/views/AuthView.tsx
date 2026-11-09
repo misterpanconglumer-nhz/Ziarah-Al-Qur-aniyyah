@@ -65,9 +65,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onOpenInstallModal, onOpenDb
           <div className="flex flex-col items-center text-center mb-6">
             <div className="p-3 bg-midnight/5 rounded-2xl mb-3 shadow-inner">
               <img
-                src="/brand/logo-symbol.svg"
+                src="/brand/logo-official.png"
                 alt="Logo Ziarah 2027"
-                className="w-14 h-14 object-contain"
+                className="w-20 h-20 object-contain drop-shadow-md"
               />
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-midnight tracking-tight">

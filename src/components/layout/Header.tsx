@@ -38,9 +38,9 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex items-center gap-2.5">
             <img 
-              src="/brand/logo-symbol.svg" 
-              alt="Logo Ziarah 2027" 
-              className="w-8 h-8 object-contain"
+              src="/brand/logo-official.png" 
+              alt="Logo Ziarah Kubro Al-Qur'aniyyah" 
+              className="w-9 h-9 object-contain drop-shadow-xs"
             />
             <div className="flex flex-col">
               <span className="text-sm font-extrabold tracking-tight text-midnight leading-none">
