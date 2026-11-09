@@ -152,6 +152,8 @@ export interface RombonganPaymentTransaction {
   id: string; // e.g. RPY-0001
   rombongan_id: string;
   rombongan_name?: string;
+  coordinator_name?: string;
+  receiver_name?: string;
   date: string;
   amount: number;
   payment_method: 'Tunai' | 'Transfer Bank' | 'QRIS' | 'Lainnya';
@@ -171,6 +173,8 @@ export interface RombonganFinancialSummary {
   memberCount: number;
   feePerJamaah: number;
   totalBill: number;
+  individualPaid: number;
+  coordinatorPaid: number;
   totalPaid: number;
   remainingBill: number;
   percentagePaid: number;

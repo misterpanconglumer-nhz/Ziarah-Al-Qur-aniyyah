@@ -263,17 +263,30 @@ export const RombonganView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Ringkasan Finansial Kolektif */}
-                <div className="mt-3 p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1.5 text-xs">
+                {/* Ringkasan Rekap Pembayaran Rombongan */}
+                <div className="mt-3 p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 text-[11px]">Total Tagihan ({summary.totalMembers} org):</span>
+                    <span className="text-slate-500 text-[11px] font-medium">Total Tagihan ({summary.totalMembers} Jamaah):</span>
                     <span className="font-mono font-bold text-slate-800">{formatRupiah(summary.totalBill)}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-emerald-700 text-[11px] font-medium">Setoran Masuk:</span>
-                    <span className="font-mono font-bold text-emerald-700">{formatRupiah(summary.totalPaid)}</span>
+
+                  <div className="grid grid-cols-2 gap-2 py-1.5 px-2 bg-white rounded-xl border border-slate-100 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Dari Jamaah:</span>
+                      <span className="font-mono font-bold text-sky-700">{formatRupiah(summary.individualPaid)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Dari Koordinator:</span>
+                      <span className="font-mono font-bold text-teal-700">{formatRupiah(summary.coordinatorPaid)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
+
+                  <div className="flex items-center justify-between text-emerald-700">
+                    <span className="text-[11px] font-bold">Total Pembayaran Diterima:</span>
+                    <span className="font-mono font-black text-xs">{formatRupiah(summary.totalPaid)}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
                     <span className="text-slate-700 font-bold text-[11px]">Sisa Tagihan:</span>
                     <span className={`font-mono font-black text-xs ${
                       summary.remainingBill === 0 ? 'text-emerald-600' : 'text-rose-600'

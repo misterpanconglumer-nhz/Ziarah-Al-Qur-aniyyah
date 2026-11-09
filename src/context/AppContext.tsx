@@ -1398,8 +1398,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const defaultBill = settings.default_bill_amount || 185000;
     const feePerJamaah = romb.fee_per_jamaah || (totalMembers > 0 ? (members[0].bill_amount || defaultBill) : defaultBill);
     const totalBill = totalMembers > 0 ? members.reduce((sum, j) => sum + (j.bill_amount || feePerJamaah), 0) : 0;
+
+    // 1. Akumulasi pembayaran individual langsung dari anggota rombongan
+    const individualPaid = members.reduce((sum, j) => sum + (j.total_paid || 0), 0);
+
+    // 2. Akumulasi setoran kolektif koordinator rombongan
     const validPayments = rombonganPaymentsList.filter(p => p.rombongan_id === rombonganId && p.status === 'valid');
-    const totalPaid = validPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const coordinatorPaid = validPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // 3. Total Pembayaran Diterima Gabungan (Individual + Koordinator)
+    const totalPaid = individualPaid + coordinatorPaid;
     const remainingBill = Math.max(0, totalBill - totalPaid);
     const percentagePaid = totalBill > 0 ? Math.min(100, Math.round((totalPaid / totalBill) * 100)) : (totalPaid > 0 ? 100 : 0);
 
@@ -1420,6 +1428,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       memberCount: totalMembers,
       feePerJamaah,
       totalBill,
+      individualPaid,
+      coordinatorPaid,
       totalPaid,
       remainingBill,
       percentagePaid,
@@ -1438,6 +1448,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...data,
       id,
       rombongan_name: romb?.name || data.rombongan_name,
+      coordinator_name: romb?.coordinator_name || data.coordinator_name || 'Koordinator',
+      receiver_name: data.receiver_name || 'Bendahara',
       status: data.status || 'valid',
       created_at: now
     };
