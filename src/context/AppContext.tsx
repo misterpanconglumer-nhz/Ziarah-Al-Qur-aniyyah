@@ -322,30 +322,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Load rombongan payments
       let loadedRpy: RombonganPaymentTransaction[] = [];
+      let rpyLoadedSuccessfully = false;
       try {
         const rpyRes = await supabase.from('rombongan_payments').select('*').order('created_at', { ascending: false });
         if (!rpyRes.error && rpyRes.data) {
           loadedRpy = rpyRes.data;
+          rpyLoadedSuccessfully = true;
         } else {
-          const auditRpy = await supabase
-            .from('audit_logs')
-            .select('*')
-            .eq('table_name', 'rombongan_payments')
-            .order('created_at', { ascending: false });
-          if (auditRpy.data && auditRpy.data.length > 0) {
-            const auditMap = new Map<string, RombonganPaymentTransaction>();
-            auditRpy.data.forEach(log => {
-              if (log.details && log.record_id && !auditMap.has(log.record_id)) {
-                if (log.action !== 'DELETE') {
-                  auditMap.set(log.record_id, log.details as RombonganPaymentTransaction);
-                }
+          // Check activity_settings.notes (synced JSON backup)
+          if (stgRes.data?.notes && stgRes.data.notes.startsWith('{')) {
+            try {
+              const parsedNotes = JSON.parse(stgRes.data.notes);
+              if (Array.isArray(parsedNotes.saved_rombongan_payments)) {
+                loadedRpy = parsedNotes.saved_rombongan_payments;
+                rpyLoadedSuccessfully = true;
               }
-            });
-            loadedRpy = Array.from(auditMap.values());
+            } catch {}
+          }
+
+          // If not found in notes, reconstruct from audit_logs with strict deleted tracking
+          if (!rpyLoadedSuccessfully) {
+            const auditRpy = await supabase
+              .from('audit_logs')
+              .select('*')
+              .eq('table_name', 'rombongan_payments')
+              .order('created_at', { ascending: false });
+            if (auditRpy.data && auditRpy.data.length > 0) {
+              const auditMap = new Map<string, RombonganPaymentTransaction>();
+              const deletedIds = new Set<string>();
+              auditRpy.data.forEach(log => {
+                if (log.record_id) {
+                  if (log.action === 'DELETE') {
+                    deletedIds.add(log.record_id);
+                  } else if (!deletedIds.has(log.record_id) && !auditMap.has(log.record_id) && log.details) {
+                    auditMap.set(log.record_id, log.details as RombonganPaymentTransaction);
+                  }
+                }
+              });
+              loadedRpy = Array.from(auditMap.values());
+              rpyLoadedSuccessfully = true;
+            }
           }
         }
-        if (loadedRpy.length > 0 || !rpyRes.error) {
-          const enrichedRpy: RombonganPaymentTransaction[] = loadedRpy.map(rpy => ({
+
+        if (rpyLoadedSuccessfully || !rpyRes.error) {
+          const enrichedRpy: RombonganPaymentTransaction[] = (loadedRpy || []).map(rpy => ({
             ...rpy,
             rombongan_name: rombMap.get(rpy.rombongan_id) || rpy.rombongan_name
           }));
@@ -1592,12 +1613,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       created_at: now
     };
 
-    setRombonganPaymentsList(prev => [newPayment, ...prev]);
+    const updatedPayments = [newPayment, ...rombonganPaymentsList];
+    setRombonganPaymentsList(updatedPayments);
 
     try {
       const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
       const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
-      cache.rombonganPayments = [newPayment, ...(cache.rombonganPayments || [])];
+      cache.rombonganPayments = updatedPayments;
       localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
     } catch {}
 
@@ -1616,6 +1638,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           details: newPayment
         }]);
       } catch {}
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_rombongan_payments = updatedPayments.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
+      } catch {}
     }
 
     showToast(`Setoran Rp ${newPayment.amount.toLocaleString('id-ID')} untuk ${newPayment.rombongan_name || 'Rombongan'} berhasil dicatat!`, 'success');
@@ -1624,13 +1657,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateRombonganPayment = async (id: string, updates: Partial<RombonganPaymentTransaction>) => {
     const updated = { ...updates, updated_at: new Date().toISOString() };
-    setRombonganPaymentsList(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+    const updatedPayments = rombonganPaymentsList.map(p => p.id === id ? { ...p, ...updated } : p);
+    setRombonganPaymentsList(updatedPayments);
 
     try {
       const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
       if (cacheRaw) {
         const cache = JSON.parse(cacheRaw);
-        cache.rombonganPayments = (cache.rombonganPayments || []).map((p: any) => p.id === id ? { ...p, ...updated } : p);
+        cache.rombonganPayments = updatedPayments;
         localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
       }
     } catch {}
@@ -1648,6 +1682,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           details: updated
         }]);
       } catch {}
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_rombongan_payments = updatedPayments.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
+      } catch {}
     }
 
     showToast('Data setoran rombongan berhasil diperbarui.', 'success');
@@ -1663,13 +1708,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteRombonganPayment = async (id: string) => {
-    setRombonganPaymentsList(prev => prev.filter(p => p.id !== id));
+    const updatedPayments = rombonganPaymentsList.filter(p => p.id !== id);
+    setRombonganPaymentsList(updatedPayments);
 
     try {
       const cacheRaw = localStorage.getItem('ziarah_cache_data_v1');
       if (cacheRaw) {
         const cache = JSON.parse(cacheRaw);
-        cache.rombonganPayments = (cache.rombonganPayments || []).filter((p: any) => p.id !== id);
+        cache.rombonganPayments = updatedPayments;
         localStorage.setItem('ziarah_cache_data_v1', JSON.stringify(cache));
       }
     } catch {}
@@ -1685,6 +1731,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           record_id: id,
           details: { deleted_at: new Date().toISOString() }
         }]);
+      } catch {}
+      try {
+        let notesObj: Record<string, any> = {};
+        if (settings?.notes && settings.notes.startsWith('{')) {
+          notesObj = JSON.parse(settings.notes);
+        }
+        notesObj.saved_rombongan_payments = updatedPayments.slice(0, 500);
+        await supabase.from('activity_settings').update({
+          notes: JSON.stringify(notesObj),
+          updated_at: new Date().toISOString()
+        }).eq('id', 'current_settings');
       } catch {}
     }
 
