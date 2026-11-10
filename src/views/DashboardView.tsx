@@ -61,9 +61,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const totalBills = jamaahList.reduce((acc, j) => acc + (j.bill_amount || 0), 0);
 
   // B. Total Pembayaran Individual (Semua setoran langsung dari jamaah)
-  const totalIndividualPaid = paymentsList
-    .filter(p => p.status === 'valid')
-    .reduce((acc, p) => acc + (p.amount || 0), 0);
+  const totalIndividualPaid = Math.max(
+    jamaahList.reduce((acc, j) => acc + (j.total_paid || 0), 0),
+    paymentsList
+      .filter(p => p.status === 'valid')
+      .reduce((acc, p) => acc + (p.amount || 0), 0)
+  );
 
   // C. Total Setoran Koordinator (Semua setoran kolektif dari rombongan)
   const totalCoordinatorPaid = rombonganPaymentsList

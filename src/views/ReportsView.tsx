@@ -66,9 +66,9 @@ export const ReportsView: React.FC = () => {
   const [rombonganSearchQuery, setRombonganSearchQuery] = useState('');
   const [rombonganBusFilter, setRombonganBusFilter] = useState('ALL');
 
-  // Get financial summaries for all rombongan (excluding pure individual group RMB-01)
+  // Get financial summaries for all rombongan
   const collectiveRombonganList = useMemo(() => {
-    return rombonganList.filter(r => r.id !== 'RMB-01' && r.payment_mode !== 'individual');
+    return rombonganList;
   }, [rombonganList]);
 
   const allRombonganSummaries = useMemo<RombonganFinancialSummary[]>(() => {
@@ -118,11 +118,8 @@ export const ReportsView: React.FC = () => {
   const [individualFilterStatus, setIndividualFilterStatus] = useState<'ALL' | 'Lunas' | 'Cicilan' | 'Belum Bayar'>('ALL');
 
   const individualJamaahList = useMemo(() => {
-    const individualRombonganIds = new Set(
-      rombonganList.filter(r => r.payment_mode === 'individual' || r.id === 'RMB-01').map(r => r.id)
-    );
-    return jamaahList.filter(j => individualRombonganIds.has(j.rombongan_id));
-  }, [jamaahList, rombonganList]);
+    return jamaahList;
+  }, [jamaahList]);
 
   const filteredIndividualJamaah = useMemo(() => {
     const q = individualSearchQuery.toLowerCase().trim();
@@ -139,9 +136,10 @@ export const ReportsView: React.FC = () => {
     });
   }, [individualJamaahList, individualSearchQuery, individualFilterStatus]);
 
-  const totalIndividualPaid = paymentsList
-    .filter(p => p.status === 'valid')
-    .reduce((acc, p) => acc + p.amount, 0);
+  const totalIndividualPaid = Math.max(
+    individualJamaahList.reduce((acc, j) => acc + (j.total_paid || 0), 0),
+    paymentsList.filter(p => p.status === 'valid').reduce((acc, p) => acc + (p.amount || 0), 0)
+  );
   const totalIndividualBills = individualJamaahList.reduce((acc, j) => acc + (j.bill_amount || 0), 0);
   const totalIndividualOutstanding = Math.max(0, totalIndividualBills - totalIndividualPaid);
   const totalIndividualLunas = individualJamaahList.filter(j => j.payment_status === 'Lunas').length;
